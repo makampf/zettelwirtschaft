@@ -1,0 +1,15 @@
+Zettelwirtschaft
+Copyright (C) 2026 Marvin (github.com/makampf)
+
+Dieses Programm ist freie Software unter der GNU Affero General Public License v3.0 (siehe LICENSE).
+
+Die App enthält Software Dritter, u. a.:
+
+- pdf.js (Mozilla Foundation) – Apache License 2.0
+- tesseract.js, tesseract.js-core – Apache License 2.0
+- deutsche Sprachdaten für die Texterkennung (@tesseract.js-data/deu) – MIT License
+- React, React DOM – MIT License
+- Hono, node-postgres (pg) – MIT License
+
+Die vollständigen Lizenztexte aller mitgelieferten Bibliotheken werden beim Build nach
+dist/THIRD-PARTY-LICENSES.txt geschrieben und mit der App ausgeliefert.

@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && tsc -p server/tsconfig.json",
+    "build": "tsc --noEmit && vite build && tsc -p server/tsconfig.json && node scripts/drittlizenzen.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p server/tsconfig.json --noEmit",
