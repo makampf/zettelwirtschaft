@@ -2,6 +2,13 @@
 
 Alle Änderungen an der Zettelwirtschaft. Wird bei jedem Release automatisch aus den Commit-Nachrichten erzeugt.
 
+## [1.0.1](https://github.com/makampf/zettelwirtschaft/compare/v1.0.0...v1.0.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* use English file names and the Zettelwirtschaft name throughout ([3c8c691](https://github.com/makampf/zettelwirtschaft/commit/3c8c69163fb491b1c51bef26b9b08d930bbeb021))
+
 # 1.0.0 (2026-09-29)
 
 
