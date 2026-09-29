@@ -2,6 +2,18 @@
 
 Alle Änderungen an der Zettelwirtschaft. Wird bei jedem Release automatisch aus den Commit-Nachrichten erzeugt.
 
+# [1.1.0](https://github.com/makampf/zettelwirtschaft/compare/v1.0.1...v1.1.0) (2026-09-29)
+
+
+### Bug Fixes
+
+* read scanned PDFs in browsers without Map.getOrInsertComputed ([0702eae](https://github.com/makampf/zettelwirtschaft/commit/0702eae132acc4302fea92469cba56c2130558e8))
+
+
+### Features
+
+* recognize billing offices and take over the treating doctor ([5ef8fd8](https://github.com/makampf/zettelwirtschaft/commit/5ef8fd80213b31e8d4babc663ca8177d7d66968c))
+
 ## [1.0.1](https://github.com/makampf/zettelwirtschaft/compare/v1.0.0...v1.0.1) (2026-09-29)
 
 
