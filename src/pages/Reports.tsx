@@ -4,34 +4,34 @@ import { Leer, PersonChip } from '../components/ui';
 import { datum, euro } from '../format';
 import { useNav } from '../nav';
 import { useStore } from '../store';
-import { ART_NAME, KT_KURZ, type Kostentraeger, type Leistungsart } from '../types';
+import { ART_NAME, KT_KURZ, type Payer, type ServiceKind } from '../types';
 
 export default function Reports() {
   const { state, personById } = useStore();
   const nav = useNav();
   const jahre = useMemo(() => {
-    const s = new Set(state.rechnungen.map((r) => Number(r.datum.slice(0, 4))));
+    const s = new Set(state.invoices.map((r) => Number(r.date.slice(0, 4))));
     s.add(new Date().getFullYear());
     return [...s].sort((a, b) => b - a);
-  }, [state.rechnungen]);
+  }, [state.invoices]);
   const [jahr, setJahr] = useState(jahre[0]);
-  const [art, setArt] = useState<Leistungsart | ''>('');
-  const personen = state.personen.filter((p) => !nav.personFilter || p.id === nav.personFilter);
+  const [art, setArt] = useState<ServiceKind | ''>('');
+  const personen = state.people.filter((p) => !nav.personFilter || p.id === nav.personFilter);
   const zeilen = personen.map((p) => ({ p, w: jahreswerte(state, p.id, jahr, art || undefined) }));
-  const kts: Kostentraeger[] = art === 'krankheit' ? ['beihilfe', 'pkv'] : art === 'pflege' ? ['beihilfe', 'ppv'] : ['beihilfe', 'pkv', 'ppv'];
+  const kts: Payer[] = art === 'illness' ? ['beihilfe', 'pkv'] : art === 'care' ? ['beihilfe', 'ppv'] : ['beihilfe', 'pkv', 'ppv'];
 
   function csvExport() {
     const kopf = ['Person', 'Rechnungsdatum', 'Art', 'Leistungserbringer', 'Rechnungsnummer', 'Beschreibung', 'Betrag', 'Bezahlt am', 'Erstattet Beihilfe', 'Erstattet PKV', 'Erstattet PPV', 'Ausstehend', 'Eigenanteil'];
     const zahl = (c: number) => (c / 100).toFixed(2).replace('.', ',');
     const text = (s: string) => `"${s.replace(/"/g, '""')}"`;
-    const rows = state.rechnungen
-      .filter((r) => r.datum.startsWith(`${jahr}-`) && (!art || r.art === art) && personen.some((p) => p.id === r.personId))
-      .sort((a, b) => a.personId.localeCompare(b.personId) || a.datum.localeCompare(b.datum))
+    const rows = state.invoices
+      .filter((r) => r.date.startsWith(`${jahr}-`) && (!art || r.kind === art) && personen.some((p) => p.id === r.personId))
+      .sort((a, b) => a.personId.localeCompare(b.personId) || a.date.localeCompare(b.date))
       .map((r) => {
         const p = personById(r.personId)!;
         const u = rechnungUebersicht(r, p, state);
-        const erst = (kt: Kostentraeger) => u.infos.find((i) => i.kt === kt && i.status === 'erstattet')?.erstattet ?? 0;
-        return [text(p.name), datum(r.datum), ART_NAME[r.art], text(r.leistungserbringer), text(r.rechnungsnummer), text(r.beschreibung), zahl(r.betrag), datum(r.bezahltAm).replace('–', ''), zahl(erst('beihilfe')), zahl(erst('pkv')), zahl(erst('ppv')), zahl(u.ausstehend), zahl(u.eigenanteil)].join(';');
+        const erst = (kt: Payer) => u.infos.find((i) => i.kt === kt && i.status === 'erstattet')?.erstattet ?? 0;
+        return [text(p.name), datum(r.date), ART_NAME[r.kind], text(r.provider), text(r.invoiceNumber), text(r.description), zahl(r.amount), datum(r.paidDate).replace('–', ''), zahl(erst('beihilfe')), zahl(erst('pkv')), zahl(erst('ppv')), zahl(u.ausstehend), zahl(u.eigenanteil)].join(';');
       });
     const blob = new Blob(['﻿' + [kopf.join(';'), ...rows].join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
@@ -66,8 +66,8 @@ export default function Reports() {
         </select>
         <div className="segmente">
           <button className={art === '' ? 'aktiv' : ''} onClick={() => setArt('')}>Alles</button>
-          <button className={art === 'krankheit' ? 'aktiv' : ''} onClick={() => setArt('krankheit')}>Krankheit</button>
-          <button className={art === 'pflege' ? 'aktiv' : ''} onClick={() => setArt('pflege')}>Pflege</button>
+          <button className={art === 'illness' ? 'aktiv' : ''} onClick={() => setArt('illness')}>Krankheit</button>
+          <button className={art === 'care' ? 'aktiv' : ''} onClick={() => setArt('care')}>Pflege</button>
         </div>
       </div>
 

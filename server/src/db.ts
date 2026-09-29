@@ -1,65 +1,64 @@
 import pg from 'pg';
 
-/** Tabellen mit je einem JSON-Datensatz pro Zeile. */
-export const SAMMLUNGEN = ['personen', 'rechnungen', 'einreichungen'] as const;
-export type Sammlung = (typeof SAMMLUNGEN)[number];
+/** Tabellen mit je einem JSON-Datensatz pro Zeile (Namen entsprechen den Schlüsseln des App-Zustands). */
+export const COLLECTIONS = ['people', 'invoices', 'submissions'] as const;
+export type Collection = (typeof COLLECTIONS)[number];
 
-export type Datensatz = { id: string } & Record<string, unknown>;
+export type DataRecord = { id: string } & { [key: string]: unknown };
 
-export interface DateiMeta {
+export interface FileMeta {
   id: string;
   name: string;
-  typ: string;
-  groesse: number;
+  type: string;
+  size: number;
 }
 
-export interface Zustand {
+export interface State {
   version: number;
-  personen: Datensatz[];
-  rechnungen: Datensatz[];
-  einreichungen: Datensatz[];
-  dateien: DateiMeta[];
+  people: DataRecord[];
+  invoices: DataRecord[];
+  submissions: DataRecord[];
+  files: FileMeta[];
 }
 
-export interface Aenderungen {
+export interface Changes {
   version?: number;
-  speichern?: Partial<Record<Sammlung, Datensatz[]>>;
-  loeschen?: Partial<Record<Sammlung, string[]>>;
+  upsert?: Partial<{ [K in Collection]: DataRecord[] }>;
+  delete?: Partial<{ [K in Collection]: string[] }>;
 }
 
 const SCHEMA = `
 create table if not exists meta (
-  schluessel text primary key,
-  wert jsonb not null
+  key text primary key,
+  value jsonb not null
 );
-create table if not exists personen (
+create table if not exists people (
   id text primary key,
-  daten jsonb not null,
-  geaendert timestamptz not null default now()
+  seq bigserial,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
 );
-create table if not exists rechnungen (
+create table if not exists invoices (
   id text primary key,
-  daten jsonb not null,
-  geaendert timestamptz not null default now()
+  seq bigserial,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
 );
-create index if not exists rechnungen_person on rechnungen ((daten->>'personId'));
-create table if not exists einreichungen (
+create index if not exists invoices_person on invoices ((data->>'personId'));
+create table if not exists submissions (
   id text primary key,
-  daten jsonb not null,
-  geaendert timestamptz not null default now()
+  seq bigserial,
+  data jsonb not null,
+  updated_at timestamptz not null default now()
 );
-create table if not exists dateien (
+create table if not exists files (
   id text primary key,
   name text not null,
-  typ text not null,
-  groesse integer not null,
-  inhalt bytea not null,
-  erstellt timestamptz not null default now()
+  type text not null,
+  size integer not null,
+  content bytea not null,
+  created_at timestamptz not null default now()
 );
--- Laufende Nummer: Datensätze behalten ihre Reihenfolge (Upserts ändern sie nicht)
-alter table personen add column if not exists nr bigserial;
-alter table rechnungen add column if not exists nr bigserial;
-alter table einreichungen add column if not exists nr bigserial;
 `;
 
 export class Datenbank {
@@ -85,73 +84,74 @@ export class Datenbank {
   }
 
   /** Liefert den gesamten Datenbestand; `null`, wenn noch nie gespeichert wurde. */
-  async laden(): Promise<Zustand | null> {
-    const version = await this.pool.query<{ wert: number }>("select wert from meta where schluessel = 'version'");
+  async laden(): Promise<State | null> {
+    const version = await this.pool.query<{ value: number }>("select value from meta where key = 'version'");
     if (!version.rowCount) return null;
-    const lese = async (s: Sammlung) => (await this.pool.query<{ daten: Datensatz }>(`select daten from ${s} order by nr`)).rows.map((r) => r.daten);
-    const dateien = await this.pool.query<DateiMeta>('select id, name, typ, groesse from dateien order by erstellt, id');
+    // Sortiert nach laufender Nummer: Datensätze behalten ihre Reihenfolge (Upserts ändern sie nicht)
+    const lese = async (s: Collection) =>
+      (await this.pool.query<{ data: DataRecord }>(`select data from ${s} order by seq`)).rows.map((r) => r.data);
+    const files = await this.pool.query<FileMeta>('select id, name, type, size from files order by created_at, id');
     return {
-      version: version.rows[0].wert,
-      personen: await lese('personen'),
-      rechnungen: await lese('rechnungen'),
-      einreichungen: await lese('einreichungen'),
-      dateien: dateien.rows,
+      version: version.rows[0].value,
+      people: await lese('people'),
+      invoices: await lese('invoices'),
+      submissions: await lese('submissions'),
+      files: files.rows,
     };
   }
 
   /** Speichert und löscht einzelne Datensätze in einer Transaktion. */
-  async aendern(a: Aenderungen): Promise<void> {
+  async aendern(a: Changes): Promise<void> {
     await this.transaktion(async (c) => {
       if (a.version != null) await setzeVersion(c, a.version);
-      for (const s of SAMMLUNGEN) {
-        for (const d of a.speichern?.[s] ?? []) {
+      for (const s of COLLECTIONS) {
+        for (const d of a.upsert?.[s] ?? []) {
           await c.query(
-            `insert into ${s} (id, daten) values ($1, $2) on conflict (id) do update set daten = excluded.daten, geaendert = now()`,
+            `insert into ${s} (id, data) values ($1, $2) on conflict (id) do update set data = excluded.data, updated_at = now()`,
             [d.id, JSON.stringify(d)],
           );
         }
-        const ids = a.loeschen?.[s] ?? [];
+        const ids = a.delete?.[s] ?? [];
         if (ids.length) await c.query(`delete from ${s} where id = any($1)`, [ids]);
       }
     });
   }
 
   /** Ersetzt den kompletten Bestand (Import einer Sicherung, Zurücksetzen). Dateien werden separat verwaltet. */
-  async ersetzen(z: Omit<Zustand, 'dateien'>): Promise<void> {
+  async ersetzen(z: Omit<State, 'files'>): Promise<void> {
     await this.transaktion(async (c) => {
-      for (const s of SAMMLUNGEN) await c.query(`delete from ${s}`);
+      for (const s of COLLECTIONS) await c.query(`delete from ${s}`);
       await setzeVersion(c, z.version);
-      for (const s of SAMMLUNGEN) {
-        for (const d of z[s]) await c.query(`insert into ${s} (id, daten) values ($1, $2)`, [d.id, JSON.stringify(d)]);
+      for (const s of COLLECTIONS) {
+        for (const d of z[s]) await c.query(`insert into ${s} (id, data) values ($1, $2)`, [d.id, JSON.stringify(d)]);
       }
     });
   }
 
-  async dateiSpeichern(meta: DateiMeta, inhalt: Buffer): Promise<void> {
+  async dateiSpeichern(meta: FileMeta, content: Buffer): Promise<void> {
     await this.pool.query(
-      `insert into dateien (id, name, typ, groesse, inhalt) values ($1, $2, $3, $4, $5)
-       on conflict (id) do update set name = excluded.name, typ = excluded.typ, groesse = excluded.groesse, inhalt = excluded.inhalt`,
-      [meta.id, meta.name, meta.typ, inhalt.length, inhalt],
+      `insert into files (id, name, type, size, content) values ($1, $2, $3, $4, $5)
+       on conflict (id) do update set name = excluded.name, type = excluded.type, size = excluded.size, content = excluded.content`,
+      [meta.id, meta.name, meta.type, content.length, content],
     );
   }
 
-  async dateiLaden(id: string): Promise<(DateiMeta & { inhalt: Buffer }) | null> {
-    const r = await this.pool.query<DateiMeta & { inhalt: Buffer }>('select id, name, typ, groesse, inhalt from dateien where id = $1', [id]);
+  async dateiLaden(id: string): Promise<(FileMeta & { content: Buffer }) | null> {
+    const r = await this.pool.query<FileMeta & { content: Buffer }>('select id, name, type, size, content from files where id = $1', [id]);
     return r.rows[0] ?? null;
   }
 
   async dateiLoeschen(id: string): Promise<void> {
-    await this.pool.query('delete from dateien where id = $1', [id]);
+    await this.pool.query('delete from files where id = $1', [id]);
   }
 
   async alleDateienLoeschen(): Promise<void> {
-    await this.pool.query('delete from dateien');
+    await this.pool.query('delete from files');
   }
 }
 
 async function setzeVersion(c: pg.PoolClient, version: number): Promise<void> {
-  await c.query(
-    "insert into meta (schluessel, wert) values ('version', $1) on conflict (schluessel) do update set wert = excluded.wert",
-    [JSON.stringify(version)],
-  );
+  await c.query("insert into meta (key, value) values ('version', $1) on conflict (key) do update set value = excluded.value", [
+    JSON.stringify(version),
+  ]);
 }

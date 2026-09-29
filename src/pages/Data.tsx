@@ -8,7 +8,7 @@ export default function Data() {
   const { state, speicherArt, allesErsetzen } = useStore();
   const [meldung, setMeldung] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
-  const speicher = state.dateien.reduce((s, d) => s + d.groesse, 0);
+  const speicher = state.files.reduce((s, d) => s + d.size, 0);
 
   async function sichern() {
     setLaeuft(true);
@@ -33,7 +33,7 @@ export default function Data() {
     try {
       const { state: neu, dateien } = await backupLesen(datei);
       await allesErsetzen(neu, dateien);
-      setMeldung(`Sicherung eingespielt: ${neu.rechnungen.length} Rechnungen, ${neu.einreichungen.length} Einreichungen, ${dateien.size} Dateien.`);
+      setMeldung(`Sicherung eingespielt: ${neu.invoices.length} Rechnungen, ${neu.submissions.length} Einreichungen, ${dateien.size} Dateien.`);
     } catch (e) {
       setMeldung(e instanceof Error ? e.message : String(e));
     } finally {
@@ -63,7 +63,7 @@ export default function Data() {
             </p>
           )}
           <p className="grau">
-            Aktuell: {state.personen.length} Personen, {state.rechnungen.length} Rechnungen, {state.einreichungen.length} Einreichungen, {state.dateien.length} Belege (
+            Aktuell: {state.people.length} Personen, {state.invoices.length} Rechnungen, {state.submissions.length} Einreichungen, {state.files.length} Belege (
             {dateigroesse(speicher)}).
           </p>
           {speicherArt === 'server' ? (

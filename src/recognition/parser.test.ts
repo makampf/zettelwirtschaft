@@ -5,9 +5,9 @@ const kontext: ParserKontext = {
   heute: '2026-09-29',
   bekannteErbringer: ['Apotheke am Markt'],
   personen: [
-    { id: 'ich', namenAufRechnung: 'Max Mustermann' },
-    { id: 'oma', namenAufRechnung: 'Erika Mustermann, Erika Muster-Mann' },
-    { id: 'opa', namenAufRechnung: 'Hans Mustermann' },
+    { id: 'ich', invoiceNames: 'Max Mustermann' },
+    { id: 'oma', invoiceNames: 'Erika Mustermann, Erika Muster-Mann' },
+    { id: 'opa', invoiceNames: 'Hans Mustermann' },
   ],
 };
 
@@ -81,23 +81,23 @@ Patient Hans  Mustermann
 describe('Rechnung auslesen', () => {
   it('Arztrechnung nach GOÄ', () => {
     expect(rechnungAuslesen(GOAE, kontext)).toEqual({
-      betrag: 2564,
-      datum: '2026-09-14',
-      faelligAm: '2026-10-14',
-      rechnungsnummer: '2026-0815',
-      leistungserbringer: 'Dr. med. Anna Weiß',
-      art: 'krankheit',
+      amount: 2564,
+      date: '2026-09-14',
+      dueDate: '2026-10-14',
+      invoiceNumber: '2026-0815',
+      provider: 'Dr. med. Anna Weiß',
+      kind: 'illness',
       personId: 'oma', // Patientin, nicht der Rechnungsempfänger
     });
   });
 
   it('Apothekenbeleg mit bekanntem Leistungserbringer', () => {
     expect(rechnungAuslesen(APOTHEKE, kontext)).toEqual({
-      betrag: 2439,
-      datum: '2026-08-03',
-      rechnungsnummer: '44718',
-      leistungserbringer: 'Apotheke am Markt',
-      art: 'krankheit',
+      amount: 2439,
+      date: '2026-08-03',
+      invoiceNumber: '44718',
+      provider: 'Apotheke am Markt',
+      kind: 'illness',
       personId: 'ich',
     });
   });
@@ -105,35 +105,35 @@ describe('Rechnung auslesen', () => {
   it('Pflegeheim: Zahlbetrag nach Abzug, Pflege erkannt', () => {
     const e = rechnungAuslesen(PFLEGEHEIM, kontext);
     expect(e).toMatchObject({
-      betrag: 322570,
-      datum: '2026-09-01',
-      faelligAm: '2026-09-15',
-      rechnungsnummer: 'SZ/2026/09-117',
-      leistungserbringer: 'Seniorenzentrum Sonnenhof gGmbH',
-      art: 'pflege',
+      amount: 322570,
+      date: '2026-09-01',
+      dueDate: '2026-09-15',
+      invoiceNumber: 'SZ/2026/09-117',
+      provider: 'Seniorenzentrum Sonnenhof gGmbH',
+      kind: 'care',
       personId: 'oma',
     });
   });
 
   it('Zahnarzt-Vorsorge', () => {
     expect(rechnungAuslesen(ZAHNARZT, kontext)).toEqual({
-      betrag: 6437,
-      datum: '2026-03-12',
-      rechnungsnummer: 'Z-3321',
-      leistungserbringer: 'Zahnarztpraxis Dr. dent. Karl Zahn',
-      art: 'krankheit',
-      vorsorge: true,
+      amount: 6437,
+      date: '2026-03-12',
+      invoiceNumber: 'Z-3321',
+      provider: 'Zahnarztpraxis Dr. dent. Karl Zahn',
+      kind: 'illness',
+      preventive: true,
       personId: 'ich',
     });
   });
 
   it('unsauberer OCR-Text', () => {
     expect(rechnungAuslesen(OCR, kontext)).toEqual({
-      betrag: 13680,
-      datum: '2026-07-22',
-      rechnungsnummer: '7781',
-      leistungserbringer: 'Physiotherapie Bewegung & Mehr',
-      art: 'krankheit',
+      amount: 13680,
+      date: '2026-07-22',
+      invoiceNumber: '7781',
+      provider: 'Physiotherapie Bewegung & Mehr',
+      kind: 'illness',
       personId: 'opa',
     });
   });
@@ -168,27 +168,27 @@ innerhalb von fünf Tagen ab Rechnungsdatum auf eines meiner Konten.`;
 
   it('Praxisrechnung 1: „Rechnung-Nr.“ ohne s, LANR ist keine Rechnungsnummer', () => {
     expect(rechnungAuslesen(PRAXIS_1, kontext)).toEqual({
-      betrag: 50274,
-      datum: '2026-08-01',
-      faelligAm: '2026-08-23',
-      rechnungsnummer: '202608471',
-      leistungserbringer: 'Praxis für Ergotherapie Musterstadt',
-      art: 'krankheit',
+      amount: 50274,
+      date: '2026-08-01',
+      dueDate: '2026-08-23',
+      invoiceNumber: '202608471',
+      provider: 'Praxis für Ergotherapie Musterstadt',
+      kind: 'illness',
       personId: 'ich',
     });
   });
 
   it('Praxisrechnung 2: Nummer mit Leerzeichen, Frist als Zahlwort', () => {
     expect(rechnungAuslesen(PRAXIS_2, kontext)).toMatchObject({
-      betrag: 67032,
-      datum: '2026-08-31',
-      faelligAm: '2026-09-05',
-      rechnungsnummer: '202608158',
+      amount: 67032,
+      date: '2026-08-31',
+      dueDate: '2026-09-05',
+      invoiceNumber: '202608158',
     });
   });
 
   describe('Rechnungsnummer', () => {
-    const nr = (text: string) => rechnungAuslesen(text, kontext).rechnungsnummer;
+    const nr = (text: string) => rechnungAuslesen(text, kontext).invoiceNumber;
 
     it('verwechselt „Ihre Nr.“ / „Unsere Nr.“ nicht mit der Rechnungsnummer', () => {
       expect(nr('Ihre Nr. 202608   Rechnungsnummer 987654321')).toBe('987654321');
@@ -219,7 +219,7 @@ innerhalb von fünf Tagen ab Rechnungsdatum auf eines meiner Konten.`;
   });
 
   it('liefert bei unbrauchbarem Text nur wenig', () => {
-    expect(rechnungAuslesen('Hallo Welt', kontext)).toEqual({ art: 'krankheit' });
+    expect(rechnungAuslesen('Hallo Welt', kontext)).toEqual({ kind: 'illness' });
   });
 
   it('ordnet mehrdeutige Namen keiner Person zu', () => {
@@ -229,7 +229,7 @@ innerhalb von fünf Tagen ab Rechnungsdatum auf eines meiner Konten.`;
 
   it('Rückfall: größter Euro-Betrag und spätestes Datum', () => {
     const e = rechnungAuslesen('Praxis Nord\nBehandlung am 01.06.2026 12,00 €\nam 15.06.2026 30,00 €\nMünchen, 20.06.2026', kontext);
-    expect(e.betrag).toBe(3000);
-    expect(e.datum).toBe('2026-06-20');
+    expect(e.amount).toBe(3000);
+    expect(e.date).toBe('2026-06-20');
   });
 });

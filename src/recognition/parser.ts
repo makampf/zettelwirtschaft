@@ -1,22 +1,22 @@
 import { bekannterErbringerImText, kennwoerter } from '../providers';
 import { plusTage } from '../format';
-import type { Leistungsart, Person } from '../types';
+import type { ServiceKind, Person } from '../types';
 
 /** Aus einem Rechnungstext erkannte Angaben. Alles optional – nur was sicher genug gefunden wurde. */
-export interface Erkennung {
+export interface Recognition {
   /** Betrag in Cent. */
-  betrag?: number;
-  datum?: string;
-  faelligAm?: string;
-  rechnungsnummer?: string;
-  leistungserbringer?: string;
-  art?: Leistungsart;
-  vorsorge?: boolean;
+  amount?: number;
+  date?: string;
+  dueDate?: string;
+  invoiceNumber?: string;
+  provider?: string;
+  kind?: ServiceKind;
+  preventive?: boolean;
   personId?: string;
 }
 
 export interface ParserKontext {
-  personen: Pick<Person, 'id' | 'namenAufRechnung'>[];
+  personen: Pick<Person, 'id' | 'invoiceNames'>[];
   /** Bereits verwendete Leistungserbringer – werden bevorzugt wiedererkannt. */
   bekannteErbringer: string[];
   /** Heutiges Datum (ISO) für Plausibilitätsprüfungen. */
@@ -238,7 +238,7 @@ const VORSORGE = /vorsorgeuntersuchung|vorsorge\b|früherkennung|check-?\s?up|ge
 
 function findePerson(zeilen: string[], personen: ParserKontext['personen']): string | undefined {
   const varianten = personen.flatMap((p) =>
-    (p.namenAufRechnung ?? '')
+    (p.invoiceNames ?? '')
       .split(',')
       .map((n) => n.trim().toLowerCase().replace(/\s+/g, ' '))
       .filter((n) => n.length >= 3)
@@ -256,7 +256,7 @@ function findePerson(zeilen: string[], personen: ParserKontext['personen']): str
 }
 
 /** Liest die wichtigsten Angaben aus dem Text einer Rechnung. */
-export function rechnungAuslesen(roh: string, k: ParserKontext): Erkennung {
+export function rechnungAuslesen(roh: string, k: ParserKontext): Recognition {
   // Leerzeichen vereinheitlichen, breite Spaltenabstände (≥ 3) aber erhalten – sie trennen Tabellenspalten
   const text = roh
     .replace(/\u00a0/g, ' ')
@@ -264,16 +264,16 @@ export function rechnungAuslesen(roh: string, k: ParserKontext): Erkennung {
     .replace(/ {3,}/g, '   ')
     .replace(/(?<! ) {2}(?! )/g, ' ');
   const zeilen = text.split(/\r?\n/).map((z) => z.trim()).filter(Boolean);
-  const e: Erkennung = {};
-  e.betrag = findeBetrag(zeilen);
-  e.datum = findeDatum(zeilen, k.heute);
-  e.faelligAm = findeFaellig(zeilen, e.datum);
-  if (e.faelligAm && e.datum && e.faelligAm < e.datum) e.faelligAm = undefined;
-  e.rechnungsnummer = findeRechnungsnummer(zeilen);
-  e.leistungserbringer = findeErbringer(zeilen, text, k.bekannteErbringer);
-  e.art = PFLEGE.test(text) ? 'pflege' : 'krankheit';
-  if (e.art === 'krankheit' && VORSORGE.test(text)) e.vorsorge = true;
+  const e: Recognition = {};
+  e.amount = findeBetrag(zeilen);
+  e.date = findeDatum(zeilen, k.heute);
+  e.dueDate = findeFaellig(zeilen, e.date);
+  if (e.dueDate && e.date && e.dueDate < e.date) e.dueDate = undefined;
+  e.invoiceNumber = findeRechnungsnummer(zeilen);
+  e.provider = findeErbringer(zeilen, text, k.bekannteErbringer);
+  e.kind = PFLEGE.test(text) ? 'care' : 'illness';
+  if (e.kind === 'illness' && VORSORGE.test(text)) e.preventive = true;
   e.personId = findePerson(zeilen, k.personen);
-  for (const key of Object.keys(e) as (keyof Erkennung)[]) if (e[key] == null) delete e[key];
+  for (const key of Object.keys(e) as (keyof Recognition)[]) if (e[key] == null) delete e[key];
   return e;
 }

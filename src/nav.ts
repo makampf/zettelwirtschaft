@@ -1,4 +1,4 @@
-import type { Kostentraeger } from './types';
+import type { Payer } from './types';
 import { createContext, useContext } from 'react';
 
 export type Seite = 'uebersicht' | 'rechnungen' | 'einreichungen' | 'auswertung' | 'personen' | 'daten';
@@ -9,7 +9,7 @@ export interface Ziel {
   /** Neues Element anlegen, optional vorbelegt mit Person und Kostenträger. */
   neu?: boolean;
   personId?: string;
-  kt?: Kostentraeger;
+  kt?: Payer;
 }
 
 export interface Nav {

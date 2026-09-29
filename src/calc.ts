@@ -1,55 +1,55 @@
 import { heute, plusMonate, tageZwischen } from './format';
-import type { AppState, Einreichung, Kostentraeger, Leistungsart, Person, Rechnung } from './types';
+import type { AppState, Submission, Payer, ServiceKind, Person, Invoice } from './types';
 
 /** Datenbasis für Berechnungen, die andere Rechnungen oder Einreichungen berücksichtigen. */
-export type Kontext = Pick<AppState, 'rechnungen' | 'einreichungen'>;
+export type Kontext = Pick<AppState, 'invoices' | 'submissions'>;
 
 /** Private Versicherung für eine Leistungsart: Krankheit → PKV, Pflege → PPV. */
-export function versicherungFuer(art: Leistungsart): 'pkv' | 'ppv' {
-  return art === 'krankheit' ? 'pkv' : 'ppv';
+export function versicherungFuer(art: ServiceKind): 'pkv' | 'ppv' {
+  return art === 'illness' ? 'pkv' : 'ppv';
 }
 
 /** Welche Stellen sind für eine Leistungsart bei dieser Person zuständig? */
-export function traegerFuer(art: Leistungsart, person: Person): Kostentraeger[] {
+export function traegerFuer(art: ServiceKind, person: Person): Payer[] {
   const versicherung = versicherungFuer(art);
-  return person.beihilfe.berechtigt ? ['beihilfe', versicherung] : [versicherung];
+  return person.beihilfe.eligible ? ['beihilfe', versicherung] : [versicherung];
 }
 
 /** Erstattungsquote in Prozent für Person, Leistungsart und Kostenträger. */
-export function quote(person: Person, art: Leistungsart, kt: Kostentraeger): number {
+export function quote(person: Person, art: ServiceKind, kt: Payer): number {
   if (kt === 'beihilfe') {
-    if (!person.beihilfe.berechtigt) return 0;
-    return art === 'krankheit' ? person.beihilfe.satzKrankheit : person.beihilfe.satzPflege;
+    if (!person.beihilfe.eligible) return 0;
+    return art === 'illness' ? person.beihilfe.rateIllness : person.beihilfe.rateCare;
   }
-  if (kt === 'pkv') return person.pkv.quote;
-  return person.ppv.quote;
+  if (kt === 'pkv') return person.pkv.rate;
+  return person.ppv.rate;
 }
 
 /** Erstattung der privaten Versicherung vor Selbstbehalt. */
-function versicherungBrutto(r: Rechnung, person: Person): number {
-  return Math.round((r.betrag * quote(person, r.art, versicherungFuer(r.art))) / 100);
+function versicherungBrutto(r: Invoice, person: Person): number {
+  return Math.round((r.amount * quote(person, r.kind, versicherungFuer(r.kind))) / 100);
 }
 
 /** Betrifft der Tarif (Selbstbehalt/BRE) diese Leistungsart? Pflege nur, wenn KV und PV gemeinsam zählen. */
-function tarifBetrifft(r: Rechnung, person: Person): boolean {
-  return !r.vorsorge && (r.art === 'krankheit' || person.pkv.mitPflege);
+function tarifBetrifft(r: Invoice, person: Person): boolean {
+  return !r.preventive && (r.kind === 'illness' || person.pkv.includesCare);
 }
 
 /** Unterliegt die Rechnung dem Selbstbehalt? (keine Vorsorge, Tarif mit Selbstbehalt) */
-function selbstbehaltPflichtig(r: Rechnung, person: Person): boolean {
-  return person.pkv.selbstbehaltProzent > 0 && tarifBetrifft(r, person);
+function selbstbehaltPflichtig(r: Invoice, person: Person): boolean {
+  return person.pkv.deductiblePercent > 0 && tarifBetrifft(r, person);
 }
 
 /**
  * Verteilt den jährlichen Selbstbehalt in Reihenfolge der Rechnungsdaten auf die Rechnungen.
  * Liefert je Rechnungs-ID den Selbstbehalt in Cent.
  */
-function selbstbehaltVerteilen(liste: Rechnung[], person: Person): Map<string, number> {
+function selbstbehaltVerteilen(liste: Invoice[], person: Person): Map<string, number> {
   const ergebnis = new Map<string, number>();
-  const sortiert = [...liste].sort((a, b) => a.datum.localeCompare(b.datum) || a.id.localeCompare(b.id));
+  const sortiert = [...liste].sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
   let verbraucht = 0;
   for (const r of sortiert) {
-    const sb = Math.min(Math.round((versicherungBrutto(r, person) * person.pkv.selbstbehaltProzent) / 100), Math.max(0, person.pkv.selbstbehaltMax - verbraucht));
+    const sb = Math.min(Math.round((versicherungBrutto(r, person) * person.pkv.deductiblePercent) / 100), Math.max(0, person.pkv.deductibleMax - verbraucht));
     ergebnis.set(r.id, sb);
     verbraucht += sb;
   }
@@ -61,28 +61,28 @@ function selbstbehaltVerteilen(liste: Rechnung[], person: Person): Map<string, n
  * Berücksichtigt alle früheren Rechnungen desselben Jahres, die bei der Versicherung eingereicht werden.
  * `r` darf ein noch ungespeicherter Entwurf sein.
  */
-export function selbstbehalt(r: Rechnung, person: Person, rechnungen: Rechnung[]): number {
+export function selbstbehalt(r: Invoice, person: Person, rechnungen: Invoice[]): number {
   if (!selbstbehaltPflichtig(r, person)) return 0;
-  const jahr = r.datum.slice(0, 4);
+  const jahr = r.date.slice(0, 4);
   const liste = [...rechnungen.filter((x) => x.id !== r.id), r].filter(
-    (x) => x.personId === r.personId && x.datum.startsWith(jahr) && selbstbehaltPflichtig(x, person) && !x.nichtEinreichen.includes(versicherungFuer(x.art)),
+    (x) => x.personId === r.personId && x.date.startsWith(jahr) && selbstbehaltPflichtig(x, person) && !x.heldBack.includes(versicherungFuer(x.kind)),
   );
   if (!liste.includes(r)) liste.push(r);
   return selbstbehaltVerteilen(liste, person).get(r.id) ?? 0;
 }
 
 /** Erwartete Erstattung in Cent (manueller Wert hat Vorrang vor Quote und Selbstbehalt). */
-export function erwartet(r: Rechnung, person: Person, kt: Kostentraeger, rechnungen: Rechnung[]): number {
-  const manuell = r.erwartetManuell[kt];
+export function erwartet(r: Invoice, person: Person, kt: Payer, rechnungen: Invoice[]): number {
+  const manuell = r.expectedOverride[kt];
   if (manuell != null) return manuell;
-  if (kt === versicherungFuer(r.art)) return versicherungBrutto(r, person) - selbstbehalt(r, person, rechnungen);
-  return Math.round((r.betrag * quote(person, r.art, kt)) / 100);
+  if (kt === versicherungFuer(r.kind)) return versicherungBrutto(r, person) - selbstbehalt(r, person, rechnungen);
+  return Math.round((r.amount * quote(person, r.kind, kt)) / 100);
 }
 
 /** Erwartete Erstattung einer Rechnung; die Person wird aus dem Zustand ermittelt. */
-export function erwartetFuerRechnung(state: Pick<AppState, 'personen' | 'rechnungen'>, r: Rechnung, kt: Kostentraeger): number {
-  const person = state.personen.find((p) => p.id === r.personId);
-  return person ? erwartet(r, person, kt, state.rechnungen) : 0;
+export function erwartetFuerRechnung(state: Pick<AppState, 'people' | 'invoices'>, r: Invoice, kt: Payer): number {
+  const person = state.people.find((p) => p.id === r.personId);
+  return person ? erwartet(r, person, kt, state.invoices) : 0;
 }
 
 export type TraegerStatus = 'offen' | 'nicht_einreichen' | 'eingereicht' | 'erstattet' | 'abgelehnt';
@@ -96,32 +96,32 @@ export const STATUS_NAME: Record<TraegerStatus, string> = {
 };
 
 export interface TraegerInfo {
-  kt: Kostentraeger;
+  kt: Payer;
   status: TraegerStatus;
   erwartet: number;
   erstattet?: number;
-  einreichung?: Einreichung;
+  einreichung?: Submission;
 }
 
 /** Jüngste Einreichung einer Rechnung bei einem Kostenträger. */
-function letzteEinreichung(r: Rechnung, kt: Kostentraeger, einreichungen: Einreichung[]): Einreichung | undefined {
-  let letzte: Einreichung | undefined;
+function letzteEinreichung(r: Invoice, kt: Payer, einreichungen: Submission[]): Submission | undefined {
+  let letzte: Submission | undefined;
   for (const e of einreichungen) {
-    if (e.kostentraeger !== kt || !e.positionen.some((p) => p.rechnungId === r.id)) continue;
-    if (!letzte || e.eingereichtAm >= letzte.eingereichtAm) letzte = e;
+    if (e.payer !== kt || !e.items.some((p) => p.invoiceId === r.id)) continue;
+    if (!letzte || e.submittedDate >= letzte.submittedDate) letzte = e;
   }
   return letzte;
 }
 
 /** Status einer Rechnung bei einem Kostenträger – maßgeblich ist die jüngste Einreichung. */
-export function traegerInfo(r: Rechnung, person: Person, kt: Kostentraeger, ctx: Kontext): TraegerInfo {
-  const erw = erwartet(r, person, kt, ctx.rechnungen);
-  const letzte = letzteEinreichung(r, kt, ctx.einreichungen);
+export function traegerInfo(r: Invoice, person: Person, kt: Payer, ctx: Kontext): TraegerInfo {
+  const erw = erwartet(r, person, kt, ctx.invoices);
+  const letzte = letzteEinreichung(r, kt, ctx.submissions);
   if (!letzte) {
-    return { kt, status: r.nichtEinreichen.includes(kt) ? 'nicht_einreichen' : 'offen', erwartet: erw };
+    return { kt, status: r.heldBack.includes(kt) ? 'nicht_einreichen' : 'offen', erwartet: erw };
   }
-  if (letzte.status === 'eingereicht') return { kt, status: 'eingereicht', erwartet: erw, einreichung: letzte };
-  const erst = letzte.positionen.find((p) => p.rechnungId === r.id)?.erstattet ?? 0;
+  if (letzte.status === 'submitted') return { kt, status: 'eingereicht', erwartet: erw, einreichung: letzte };
+  const erst = letzte.items.find((p) => p.invoiceId === r.id)?.reimbursed ?? 0;
   return { kt, status: erst > 0 ? 'erstattet' : 'abgelehnt', erwartet: erw, erstattet: erst, einreichung: letzte };
 }
 
@@ -137,8 +137,8 @@ export interface RechnungUebersicht {
   abgeschlossen: boolean;
 }
 
-export function rechnungUebersicht(r: Rechnung, person: Person, ctx: Kontext): RechnungUebersicht {
-  const infos = traegerFuer(r.art, person).map((kt) => traegerInfo(r, person, kt, ctx));
+export function rechnungUebersicht(r: Invoice, person: Person, ctx: Kontext): RechnungUebersicht {
+  const infos = traegerFuer(r.kind, person).map((kt) => traegerInfo(r, person, kt, ctx));
   let erstattet = 0;
   let ausstehend = 0;
   for (const i of infos) {
@@ -149,28 +149,28 @@ export function rechnungUebersicht(r: Rechnung, person: Person, ctx: Kontext): R
     infos,
     erstattet,
     ausstehend,
-    eigenanteil: r.betrag - erstattet - ausstehend,
+    eigenanteil: r.amount - erstattet - ausstehend,
     abgeschlossen: infos.every((i) => i.status !== 'offen' && i.status !== 'eingereicht'),
   };
 }
 
 /** Ende der Beihilfe-Antragsfrist für eine Rechnung. */
-export function beihilfeFristEnde(r: Rechnung, person: Person): string {
-  return plusMonate(r.datum, person.beihilfe.fristMonate);
+export function beihilfeFristEnde(r: Invoice, person: Person): string {
+  return plusMonate(r.date, person.beihilfe.deadlineMonths);
 }
 
 /** Rechnungen, die bei einem Kostenträger (erneut) eingereicht werden können. */
-export function einreichbareRechnungen(state: AppState, personId: string, kt: Kostentraeger, ausserEinreichung?: string): Rechnung[] {
-  const person = state.personen.find((p) => p.id === personId);
+export function einreichbareRechnungen(state: AppState, personId: string, kt: Payer, ausserEinreichung?: string): Invoice[] {
+  const person = state.people.find((p) => p.id === personId);
   if (!person) return [];
-  const ctx: Kontext = { rechnungen: state.rechnungen, einreichungen: state.einreichungen.filter((e) => e.id !== ausserEinreichung) };
-  return state.rechnungen
-    .filter((r) => r.personId === personId && traegerFuer(r.art, person).includes(kt))
+  const ctx: Kontext = { invoices: state.invoices, submissions: state.submissions.filter((e) => e.id !== ausserEinreichung) };
+  return state.invoices
+    .filter((r) => r.personId === personId && traegerFuer(r.kind, person).includes(kt))
     .filter((r) => {
       const s = traegerInfo(r, person, kt, ctx).status;
       return s === 'offen' || s === 'abgelehnt';
     })
-    .sort((a, b) => a.datum.localeCompare(b.datum));
+    .sort((a, b) => a.date.localeCompare(b.date));
 }
 
 // ---------------------------------------------------------------------------
@@ -182,16 +182,16 @@ export interface BreCheck {
   /** BRE bei Leistungsfreiheit in Cent (0 = Betrag unbekannt). */
   bre: number;
   /** BRE-relevante Rechnungen des Jahres (ohne Vorsorge; Pflege nur bei gemeinsamem Tarif). */
-  rechnungen: Rechnung[];
+  rechnungen: Invoice[];
   betrag: number;
   /** Versicherungserstattung (nach Selbstbehalt), wenn alle diese Rechnungen eingereicht würden. */
   erstattungBeiEinreichung: number;
   /** Bereits bei der Versicherung eingereicht → BRE für dieses Jahr entfällt. */
-  eingereicht: Rechnung[];
+  eingereicht: Invoice[];
   /** Noch nicht eingereicht und nicht zurückgehalten. */
-  offen: Rechnung[];
+  offen: Invoice[];
   /** Bewusst zurückgehalten. */
-  zurueckgehalten: Rechnung[];
+  zurueckgehalten: Invoice[];
   /** Ohne bekannten BRE-Betrag ist keine Empfehlung möglich. */
   empfehlung: 'zurueckhalten' | 'einreichen' | 'unbekannt';
   /** Finanzieller Vorteil der Empfehlung gegenüber der Alternative in Cent. */
@@ -199,48 +199,48 @@ export interface BreCheck {
 }
 
 /** BRE-relevant: Rechnung ohne Vorsorge, die (anteilig) an die private Versicherung des Tarifs gehen würde. */
-export function breRelevant(r: Rechnung, person: Person): boolean {
-  return person.pkv.breAktiv && tarifBetrifft(r, person) && quote(person, r.art, versicherungFuer(r.art)) > 0;
+export function breRelevant(r: Invoice, person: Person): boolean {
+  return person.pkv.premiumRefundEnabled && tarifBetrifft(r, person) && quote(person, r.kind, versicherungFuer(r.kind)) > 0;
 }
 
 /** Vergleicht für ein Jahr: alles bei der Versicherung einreichen oder zurückhalten und BRE erhalten? */
 export function breCheck(ctx: Kontext, person: Person, jahr: number): BreCheck | null {
-  if (!person.pkv.breAktiv) return null;
-  const liste = ctx.rechnungen.filter((r) => r.personId === person.id && r.datum.startsWith(`${jahr}-`) && breRelevant(r, person));
+  if (!person.pkv.premiumRefundEnabled) return null;
+  const liste = ctx.invoices.filter((r) => r.personId === person.id && r.date.startsWith(`${jahr}-`) && breRelevant(r, person));
   const sb = selbstbehaltVerteilen(liste.filter((r) => selbstbehaltPflichtig(r, person)), person);
   let erstattung = 0;
-  const eingereicht: Rechnung[] = [];
-  const offen: Rechnung[] = [];
-  const zurueckgehalten: Rechnung[] = [];
+  const eingereicht: Invoice[] = [];
+  const offen: Invoice[] = [];
+  const zurueckgehalten: Invoice[] = [];
   for (const r of liste) {
-    const kt = versicherungFuer(r.art);
-    erstattung += r.erwartetManuell[kt] ?? versicherungBrutto(r, person) - (sb.get(r.id) ?? 0);
-    const e = letzteEinreichung(r, kt, ctx.einreichungen);
+    const kt = versicherungFuer(r.kind);
+    erstattung += r.expectedOverride[kt] ?? versicherungBrutto(r, person) - (sb.get(r.id) ?? 0);
+    const e = letzteEinreichung(r, kt, ctx.submissions);
     if (e) eingereicht.push(r);
-    else if (r.nichtEinreichen.includes(kt)) zurueckgehalten.push(r);
+    else if (r.heldBack.includes(kt)) zurueckgehalten.push(r);
     else offen.push(r);
   }
-  const unbekannt = !person.pkv.bre;
-  const einreichen = erstattung > person.pkv.bre;
+  const unbekannt = !person.pkv.premiumRefund;
+  const einreichen = erstattung > person.pkv.premiumRefund;
   return {
     personId: person.id,
     jahr,
-    bre: person.pkv.bre,
+    bre: person.pkv.premiumRefund,
     rechnungen: liste,
-    betrag: liste.reduce((s, r) => s + r.betrag, 0),
+    betrag: liste.reduce((s, r) => s + r.amount, 0),
     erstattungBeiEinreichung: erstattung,
     eingereicht,
     offen,
     zurueckgehalten,
     empfehlung: unbekannt ? 'unbekannt' : einreichen ? 'einreichen' : 'zurueckhalten',
-    vorteil: unbekannt ? 0 : Math.abs(erstattung - person.pkv.bre),
+    vorteil: unbekannt ? 0 : Math.abs(erstattung - person.pkv.premiumRefund),
   };
 }
 
 /** Soll eine neue Rechnung standardmäßig für die BRE zurückgehalten werden? */
-export function standardZurueckhalten(r: Rechnung, person: Person, ctx: Kontext): boolean {
+export function standardZurueckhalten(r: Invoice, person: Person, ctx: Kontext): boolean {
   if (!breRelevant(r, person)) return false;
-  const check = breCheck(ctx, person, Number(r.datum.slice(0, 4)));
+  const check = breCheck(ctx, person, Number(r.date.slice(0, 4)));
   // Wurde in diesem Jahr schon eingereicht, ist die BRE ohnehin verloren.
   return !check || check.eingereicht.length === 0;
 }
@@ -267,15 +267,15 @@ const euroKurz = (c: number) => `${Math.round(c / 100).toLocaleString('de-DE')} 
 /** Sammelt Fristen und Erinnerungen, nach Dringlichkeit sortiert. */
 export function hinweise(state: AppState, stichtag = heute()): Hinweis[] {
   const liste: Hinweis[] = [];
-  const personen = new Map(state.personen.map((p) => [p.id, p]));
+  const personen = new Map(state.people.map((p) => [p.id, p]));
 
-  for (const r of state.rechnungen) {
+  for (const r of state.invoices) {
     const person = personen.get(r.personId);
     if (!person) continue;
-    const titel = `${r.leistungserbringer || 'Rechnung'} vom ${r.datum.split('-').reverse().join('.')}`;
+    const titel = `${r.provider || 'Rechnung'} vom ${r.date.split('-').reverse().join('.')}`;
 
-    if (!r.bezahltAm && r.faelligAm) {
-      const tage = tageZwischen(stichtag, r.faelligAm);
+    if (!r.paidDate && r.dueDate) {
+      const tage = tageZwischen(stichtag, r.dueDate);
       if (tage < 0) {
         liste.push({ stufe: 'kritisch', personId: person.id, rechnungId: r.id, text: `${titel}: Zahlung seit ${-tage} Tag(en) überfällig` });
       } else if (tage <= WARNUNG_ZAHLUNG_TAGE) {
@@ -283,7 +283,7 @@ export function hinweise(state: AppState, stichtag = heute()): Hinweis[] {
       }
     }
 
-    if (traegerFuer(r.art, person).includes('beihilfe') && traegerInfo(r, person, 'beihilfe', state).status === 'offen') {
+    if (traegerFuer(r.kind, person).includes('beihilfe') && traegerInfo(r, person, 'beihilfe', state).status === 'offen') {
       const tage = tageZwischen(stichtag, beihilfeFristEnde(r, person));
       if (tage < 0) {
         liste.push({ stufe: 'kritisch', personId: person.id, rechnungId: r.id, text: `${titel}: Beihilfe-Antragsfrist seit ${-tage} Tag(en) abgelaufen` });
@@ -295,11 +295,11 @@ export function hinweise(state: AppState, stichtag = heute()): Hinweis[] {
 
   // Abgelaufene Jahre mit zurückgehaltenen Rechnungen: BRE-Entscheidung treffen
   const aktuellesJahr = Number(stichtag.slice(0, 4));
-  for (const person of state.personen) {
-    if (person.pkv.breAktiv && !person.pkv.bre) {
+  for (const person of state.people) {
+    if (person.pkv.premiumRefundEnabled && !person.pkv.premiumRefund) {
       liste.push({ stufe: 'info', personId: person.id, personenSeite: true, text: 'Betrag der Beitragsrückerstattung fehlt – bitte unter Personen eintragen' });
     }
-    const jahre = new Set(state.rechnungen.filter((r) => r.personId === person.id).map((r) => Number(r.datum.slice(0, 4))));
+    const jahre = new Set(state.invoices.filter((r) => r.personId === person.id).map((r) => Number(r.date.slice(0, 4))));
     for (const jahr of jahre) {
       if (jahr >= aktuellesJahr) continue;
       const c = breCheck(state, person, jahr);
@@ -316,16 +316,16 @@ export function hinweise(state: AppState, stichtag = heute()): Hinweis[] {
     }
   }
 
-  for (const e of state.einreichungen) {
-    if (e.status !== 'eingereicht') continue;
-    const tage = tageZwischen(e.eingereichtAm, stichtag);
+  for (const e of state.submissions) {
+    if (e.status !== 'submitted') continue;
+    const tage = tageZwischen(e.submittedDate, stichtag);
     if (tage >= NACHFRAGEN_NACH_TAGEN) {
-      const name = { beihilfe: 'Beihilfe', pkv: 'PKV', ppv: 'PPV' }[e.kostentraeger];
+      const name = { beihilfe: 'Beihilfe', pkv: 'PKV', ppv: 'PPV' }[e.payer];
       liste.push({
         stufe: 'info',
         personId: e.personIds[0],
         einreichungId: e.id,
-        text: `${name}-Einreichung vom ${e.eingereichtAm.split('-').reverse().join('.')} seit ${Math.floor(tage / 7)} Wochen ohne Bescheid – ggf. nachfragen`,
+        text: `${name}-Einreichung vom ${e.submittedDate.split('-').reverse().join('.')} seit ${Math.floor(tage / 7)} Wochen ohne Bescheid – ggf. nachfragen`,
       });
     }
   }
@@ -340,21 +340,21 @@ export function hinweise(state: AppState, stichtag = heute()): Hinweis[] {
 export interface Jahreswerte {
   anzahl: number;
   betrag: number;
-  erstattet: Record<Kostentraeger, number>;
+  erstattet: Record<Payer, number>;
   ausstehend: number;
   eigenanteil: number;
 }
 
 /** Summen je Person und Jahr (nach Rechnungsdatum), optional nur für eine Leistungsart. */
-export function jahreswerte(state: AppState, personId: string, jahr: number, art?: Leistungsart): Jahreswerte {
-  const person = state.personen.find((p) => p.id === personId);
+export function jahreswerte(state: AppState, personId: string, jahr: number, art?: ServiceKind): Jahreswerte {
+  const person = state.people.find((p) => p.id === personId);
   const w: Jahreswerte = { anzahl: 0, betrag: 0, erstattet: { beihilfe: 0, pkv: 0, ppv: 0 }, ausstehend: 0, eigenanteil: 0 };
   if (!person) return w;
-  for (const r of state.rechnungen) {
-    if (r.personId !== personId || !r.datum.startsWith(`${jahr}-`) || (art && r.art !== art)) continue;
+  for (const r of state.invoices) {
+    if (r.personId !== personId || !r.date.startsWith(`${jahr}-`) || (art && r.kind !== art)) continue;
     const u = rechnungUebersicht(r, person, state);
     w.anzahl++;
-    w.betrag += r.betrag;
+    w.betrag += r.amount;
     for (const i of u.infos) if (i.status === 'erstattet') w.erstattet[i.kt] += i.erstattet ?? 0;
     w.ausstehend += u.ausstehend;
     w.eigenanteil += u.eigenanteil;

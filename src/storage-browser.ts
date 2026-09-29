@@ -1,5 +1,5 @@
 import type { Speicher } from './storage';
-import type { AppState, DateiMeta } from './types';
+import type { AppState, FileMeta } from './types';
 
 // Speicherung lokal im Browser (IndexedDB) – für die GitHub-Pages-Version und die Datei-Version.
 const DB_NAME = 'zettelwirtschaft';
@@ -50,7 +50,7 @@ export const browserSpeicher: Speicher = {
   async speichere(state: AppState) {
     await tx('kv', 'readwrite', (s) => s.put(state, STATE_KEY));
   },
-  async speichereDatei(meta: DateiMeta, blob: Blob) {
+  async speichereDatei(meta: FileMeta, blob: Blob) {
     await tx('dateien', 'readwrite', (s) => s.put(blob, meta.id));
   },
   async ladeDatei(id: string) {
@@ -61,7 +61,7 @@ export const browserSpeicher: Speicher = {
   },
   async ersetzeAlles(state: AppState, dateien: Map<string, Blob>) {
     await tx('dateien', 'readwrite', (s) => s.clear());
-    for (const d of state.dateien) {
+    for (const d of state.files) {
       const blob = dateien.get(d.id);
       if (blob) await this.speichereDatei(d, blob);
     }

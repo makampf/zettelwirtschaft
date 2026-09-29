@@ -1,6 +1,6 @@
 import { browserSpeicher } from './storage-browser';
 import { serverSpeicher } from './storage-server';
-import type { AppState, DateiMeta } from './types';
+import type { AppState, FileMeta } from './types';
 
 /** Wo die Daten liegen: lokal im Browser oder in der Datenbank des Servers. */
 export interface Speicher {
@@ -12,7 +12,7 @@ export interface Speicher {
   /** Wartet, bis laufende Speichervorgänge abgeschlossen sind. */
   warte?(): Promise<void>;
   speichere(state: AppState): Promise<void>;
-  speichereDatei(meta: DateiMeta, blob: Blob): Promise<void>;
+  speichereDatei(meta: FileMeta, blob: Blob): Promise<void>;
   ladeDatei(id: string): Promise<Blob | undefined>;
   /** Direkt aufrufbare Adresse einer Datei (nur Server). */
   dateiUrl?(id: string): string;

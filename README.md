@@ -118,8 +118,8 @@ Die Anmeldung erfolgt per HTTP Basic Auth und ist ohne HTTPS nicht abhörsicher.
   öffnen und dort *Daten → Sicherung einspielen*.
 - **Backup der Datenbank:** `docker compose exec db pg_dump -U zettelwirtschaft zettelwirtschaft > zettelwirtschaft-$(date +%F).sql`
   (enthält auch alle Belege).
-- Die Daten stehen als JSON in den Tabellen `personen`, `rechnungen`, `einreichungen`; Belege in `dateien`.
-  Beispiel: `SELECT daten->>'leistungserbringer', (daten->>'betrag')::int / 100.0 FROM rechnungen;`
+- Die Daten stehen als JSON (Spalte `data`) in den Tabellen `people`, `invoices`, `submissions`; Belege in `files`.
+  Beispiel: `SELECT data->>'provider', (data->>'amount')::int / 100.0 FROM invoices;`
 
 ## Online-Version
 

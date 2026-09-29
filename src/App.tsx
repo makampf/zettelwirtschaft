@@ -61,7 +61,7 @@ export default function App() {
         </nav>
         <select value={personFilter} onChange={(e) => setPersonFilter(e.target.value)} aria-label="Person filtern">
           <option value="">Alle Personen</option>
-          {state.personen.map((p) => (
+          {state.people.map((p) => (
             <option key={p.id} value={p.id}>{p.name}</option>
           ))}
         </select>

@@ -3,12 +3,12 @@ import { Leer, PersonChip } from '../components/ui';
 import { euro } from '../format';
 import { useNav } from '../nav';
 import { useStore } from '../store';
-import { KOSTENTRAEGER, KT_NAME, type Kostentraeger, type Person, type Rechnung } from '../types';
+import { KOSTENTRAEGER, KT_NAME, type Payer, type Person, type Invoice } from '../types';
 
 export default function Overview() {
   const { state, personById } = useStore();
   const nav = useNav();
-  const personen = state.personen.filter((p) => !nav.personFilter || p.id === nav.personFilter);
+  const personen = state.people.filter((p) => !nav.personFilter || p.id === nav.personFilter);
   const liste = hinweise(state).filter((h) => !nav.personFilter || h.personId === nav.personFilter);
 
   return (
@@ -43,7 +43,7 @@ export default function Overview() {
         </div>
       )}
 
-      {state.rechnungen.length === 0 && (
+      {state.invoices.length === 0 && (
         <Leer>
           Willkommen! Prüfe zuerst unter <button className="link" onClick={() => nav.gehe('personen')}>Personen</button> die Beihilfe-Bemessungssätze und
           Versicherungen für dich und deine Großeltern. Danach kannst du Rechnungen erfassen und Einreichungen verfolgen.
@@ -60,15 +60,15 @@ export default function Overview() {
 function PersonKarte({ person }: { person: Person }) {
   const { state } = useStore();
   const nav = useNav();
-  const rechnungen = state.rechnungen.filter((r) => r.personId === person.id);
+  const rechnungen = state.invoices.filter((r) => r.personId === person.id);
 
-  const unbezahlt = rechnungen.filter((r) => !r.bezahltAm);
-  const einreichen: Record<Kostentraeger, { n: number; betrag: number; erwartet: number }> = {
+  const unbezahlt = rechnungen.filter((r) => !r.paidDate);
+  const einreichen: Record<Payer, { n: number; betrag: number; erwartet: number }> = {
     beihilfe: { n: 0, betrag: 0, erwartet: 0 },
     pkv: { n: 0, betrag: 0, erwartet: 0 },
     ppv: { n: 0, betrag: 0, erwartet: 0 },
   };
-  const ausstehend: Record<Kostentraeger, { n: number; erwartet: number }> = {
+  const ausstehend: Record<Payer, { n: number; erwartet: number }> = {
     beihilfe: { n: 0, erwartet: 0 },
     pkv: { n: 0, erwartet: 0 },
     ppv: { n: 0, erwartet: 0 },
@@ -81,7 +81,7 @@ function PersonKarte({ person }: { person: Person }) {
     for (const i of u.infos) {
       if (i.status === 'offen') {
         einreichen[i.kt].n++;
-        einreichen[i.kt].betrag += r.betrag;
+        einreichen[i.kt].betrag += r.amount;
         einreichen[i.kt].erwartet += i.erwartet;
       }
       if (i.status === 'eingereicht') {
@@ -89,13 +89,13 @@ function PersonKarte({ person }: { person: Person }) {
         ausstehend[i.kt].erwartet += i.erwartet;
       }
     }
-    if (r.datum.startsWith(jahr)) {
+    if (r.date.startsWith(jahr)) {
       eigenJahr += u.eigenanteil;
-      summeJahr += r.betrag;
+      summeJahr += r.amount;
     }
   }
   const relevant = KOSTENTRAEGER.filter(
-    (kt) => traegerFuer('krankheit', person).includes(kt) || rechnungen.some((r) => traegerFuer(r.art, person).includes(kt)),
+    (kt) => traegerFuer('illness', person).includes(kt) || rechnungen.some((r) => traegerFuer(r.kind, person).includes(kt)),
   );
   // BRE: laufendes Jahr und Vorjahr, solange dort noch nicht eingereicht wurde
   const breChecks = [Number(jahr), Number(jahr) - 1]
@@ -103,12 +103,12 @@ function PersonKarte({ person }: { person: Person }) {
     .filter((c): c is BreCheck => !!c && (c.jahr === Number(jahr) || (c.eingereicht.length === 0 && c.rechnungen.length > 0)));
 
   return (
-    <article className="karte" style={{ '--farbe': person.farbe } as React.CSSProperties}>
+    <article className="karte" style={{ '--farbe': person.color } as React.CSSProperties}>
       <h2>{person.name}</h2>
 
       <div className="kennzahl" onClick={() => { nav.setPersonFilter(person.id); nav.gehe('rechnungen'); }}>
         <span>Noch zu bezahlen</span>
-        <strong className={unbezahlt.length ? '' : 'grau'}>{euro(unbezahlt.reduce((s, r) => s + r.betrag, 0))}</strong>
+        <strong className={unbezahlt.length ? '' : 'grau'}>{euro(unbezahlt.reduce((s, r) => s + r.amount, 0))}</strong>
         <small>{unbezahlt.length} Rechnung(en)</small>
       </div>
 
@@ -150,11 +150,11 @@ function PersonKarte({ person }: { person: Person }) {
 
 function BreBox({ check: c, laufend }: { check: BreCheck; laufend: boolean }) {
   const { speichereRechnung } = useStore();
-  const setzen = (liste: Rechnung[], halten: boolean) => {
+  const setzen = (liste: Invoice[], halten: boolean) => {
     for (const r of liste) {
-      const kt = versicherungFuer(r.art);
-      const ohne = r.nichtEinreichen.filter((k) => k !== kt);
-      speichereRechnung({ ...r, nichtEinreichen: halten ? [...ohne, kt] : ohne });
+      const kt = versicherungFuer(r.kind);
+      const ohne = r.heldBack.filter((k) => k !== kt);
+      speichereRechnung({ ...r, heldBack: halten ? [...ohne, kt] : ohne });
     }
   };
 

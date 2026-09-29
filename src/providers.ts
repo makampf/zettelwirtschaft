@@ -1,4 +1,4 @@
-import type { Leistungsart, Rechnung } from './types';
+import type { ServiceKind, Invoice } from './types';
 
 /** Zusammenfassung eines Leistungserbringers aus den bisherigen Rechnungen. */
 export interface ErbringerInfo {
@@ -7,7 +7,7 @@ export interface ErbringerInfo {
   /** Datum der letzten Rechnung (ISO). */
   zuletzt: string;
   /** Häufigste Leistungsart. */
-  art: Leistungsart;
+  art: ServiceKind;
   /** Person, falls alle Rechnungen dieses Erbringers dieselbe Person betreffen. */
   personId?: string;
 }
@@ -24,20 +24,20 @@ export function normalisiere(s: string): string {
 }
 
 /** Alle bisherigen Leistungserbringer, zuletzt verwendete zuerst. */
-export function erbringerListe(rechnungen: Rechnung[]): ErbringerInfo[] {
-  const map = new Map<string, { name: string; anzahl: number; zuletzt: string; arten: Record<Leistungsart, number>; personen: Set<string> }>();
+export function erbringerListe(rechnungen: Invoice[]): ErbringerInfo[] {
+  const map = new Map<string, { name: string; anzahl: number; zuletzt: string; arten: Record<ServiceKind, number>; personen: Set<string> }>();
   for (const r of rechnungen) {
-    const name = r.leistungserbringer.trim();
+    const name = r.provider.trim();
     if (!name) continue;
     const key = normalisiere(name);
     let e = map.get(key);
-    if (!e) map.set(key, (e = { name, anzahl: 0, zuletzt: '', arten: { krankheit: 0, pflege: 0 }, personen: new Set() }));
+    if (!e) map.set(key, (e = { name, anzahl: 0, zuletzt: '', arten: { illness: 0, care: 0 }, personen: new Set() }));
     e.anzahl++;
-    e.arten[r.art]++;
+    e.arten[r.kind]++;
     e.personen.add(r.personId);
     // Schreibweise der jüngsten Rechnung verwenden
-    if (r.datum >= e.zuletzt) {
-      e.zuletzt = r.datum;
+    if (r.date >= e.zuletzt) {
+      e.zuletzt = r.date;
       e.name = name;
     }
   }
@@ -46,7 +46,7 @@ export function erbringerListe(rechnungen: Rechnung[]): ErbringerInfo[] {
       name: e.name,
       anzahl: e.anzahl,
       zuletzt: e.zuletzt,
-      art: (e.arten.pflege > e.arten.krankheit ? 'pflege' : 'krankheit') as Leistungsart,
+      art: (e.arten.care > e.arten.illness ? 'care' : 'illness') as ServiceKind,
       personId: e.personen.size === 1 ? [...e.personen][0] : undefined,
     }))
     .sort((a, b) => b.zuletzt.localeCompare(a.zuletzt) || b.anzahl - a.anzahl || a.name.localeCompare(b.name));

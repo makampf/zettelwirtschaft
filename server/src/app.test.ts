@@ -15,12 +15,12 @@ describe.skipIf(!url)('Server-API', () => {
     pool = new pg.Pool({ connectionString: url });
     db = new Datenbank(pool);
     // Immer mit leerer Datenbank beginnen, damit auch das Anlegen des Schemas geprüft wird
-    await pool.query('drop table if exists meta, personen, rechnungen, einreichungen, dateien');
+    await pool.query('drop table if exists meta, people, invoices, submissions, files');
     await db.schemaAnlegen();
     await db.schemaAnlegen(); // mehrfacher Start darf nicht scheitern
   });
   beforeEach(async () => {
-    await pool.query('truncate meta, personen, rechnungen, einreichungen, dateien');
+    await pool.query('truncate meta, people, invoices, submissions, files');
   });
   afterAll(async () => {
     await pool.end();
@@ -28,80 +28,80 @@ describe.skipIf(!url)('Server-API', () => {
 
   it('meldet sich als Server und liefert ohne Daten null', async () => {
     const app = erstelleApp(db);
-    expect(await (await app.request('/api/status')).json()).toEqual({ server: true, anmeldung: false, version: null });
+    expect(await (await app.request('/api/status')).json()).toEqual({ server: true, auth: false, version: null });
     expect(await (await erstelleApp(db, { version: '1.2.3' }).request('/api/status')).json()).toMatchObject({ version: '1.2.3' });
     expect(await (await app.request('/api/state')).json()).toEqual({ state: null });
   });
 
   it('speichert, ändert und löscht Datensätze', async () => {
     const app = erstelleApp(db);
-    const post = (body: unknown) => app.request('/api/aenderungen', { method: 'POST', headers: H, body: JSON.stringify(body) });
-    expect((await post({ version: 4, speichern: { personen: [{ id: 'p1', name: 'Oma' }], rechnungen: [{ id: 'r1', personId: 'p1', betrag: 100 }] } })).status).toBe(200);
-    expect((await post({ speichern: { rechnungen: [{ id: 'r1', personId: 'p1', betrag: 250 }] } })).status).toBe(200);
+    const post = (body: unknown) => app.request('/api/changes', { method: 'POST', headers: H, body: JSON.stringify(body) });
+    expect((await post({ version: 1, upsert: { people: [{ id: 'p1', name: 'Oma' }], invoices: [{ id: 'r1', personId: 'p1', betrag: 100 }] } })).status).toBe(200);
+    expect((await post({ upsert: { invoices: [{ id: 'r1', personId: 'p1', betrag: 250 }] } })).status).toBe(200);
     let s = (await (await app.request('/api/state')).json()).state;
-    expect(s.version).toBe(4);
-    expect(s.personen).toEqual([{ id: 'p1', name: 'Oma' }]);
-    expect(s.rechnungen).toEqual([{ id: 'r1', personId: 'p1', betrag: 250 }]);
+    expect(s.version).toBe(1);
+    expect(s.people).toEqual([{ id: 'p1', name: 'Oma' }]);
+    expect(s.invoices).toEqual([{ id: 'r1', personId: 'p1', betrag: 250 }]);
 
-    await post({ loeschen: { rechnungen: ['r1'] } });
+    await post({ delete: { invoices: ['r1'] } });
     s = (await (await app.request('/api/state')).json()).state;
-    expect(s.rechnungen).toEqual([]);
+    expect(s.invoices).toEqual([]);
     // per SQL abfragbar
-    await post({ speichern: { rechnungen: [{ id: 'r2', personId: 'p1', betrag: 7 }] } });
-    const r = await pool.query("select id from rechnungen where daten->>'personId' = 'p1'");
+    await post({ upsert: { invoices: [{ id: 'r2', personId: 'p1', betrag: 7 }] } });
+    const r = await pool.query("select id from invoices where data->>'personId' = 'p1'");
     expect(r.rows).toEqual([{ id: 'r2' }]);
   });
 
   it('behält die Reihenfolge der Datensätze', async () => {
     const app = erstelleApp(db);
     const ids = ['zz', 'aa', 'mm'];
-    await app.request('/api/aenderungen', { method: 'POST', headers: H, body: JSON.stringify({ version: 4, speichern: { personen: ids.map((id) => ({ id })) } }) });
-    await app.request('/api/aenderungen', { method: 'POST', headers: H, body: JSON.stringify({ speichern: { personen: [{ id: 'aa', name: 'geändert' }] } }) });
+    await app.request('/api/changes', { method: 'POST', headers: H, body: JSON.stringify({ version: 1, upsert: { people: ids.map((id) => ({ id })) } }) });
+    await app.request('/api/changes', { method: 'POST', headers: H, body: JSON.stringify({ upsert: { people: [{ id: 'aa', name: 'geändert' }] } }) });
     const s = (await (await app.request('/api/state')).json()).state;
-    expect(s.personen.map((p: { id: string }) => p.id)).toEqual(ids);
-    await app.request('/api/state', { method: 'PUT', headers: H, body: JSON.stringify({ version: 4, personen: [{ id: 'b' }, { id: 'a' }], rechnungen: [], einreichungen: [] }) });
+    expect(s.people.map((p: { id: string }) => p.id)).toEqual(ids);
+    await app.request('/api/state', { method: 'PUT', headers: H, body: JSON.stringify({ version: 1, people: [{ id: 'b' }, { id: 'a' }], invoices: [], submissions: [] }) });
     const t = (await (await app.request('/api/state')).json()).state;
-    expect(t.personen.map((p: { id: string }) => p.id)).toEqual(['b', 'a']);
+    expect(t.people.map((p: { id: string }) => p.id)).toEqual(['b', 'a']);
   });
 
   it('lehnt ungültige Daten ab und bleibt atomar', async () => {
     const app = erstelleApp(db);
-    const post = (body: unknown) => app.request('/api/aenderungen', { method: 'POST', headers: H, body: JSON.stringify(body) });
-    expect((await post({ speichern: { hacker: [{ id: 'x' }] } })).status).toBe(400);
-    expect((await post({ speichern: { personen: [{ name: 'ohne id' }] } })).status).toBe(400);
+    const post = (body: unknown) => app.request('/api/changes', { method: 'POST', headers: H, body: JSON.stringify(body) });
+    expect((await post({ upsert: { hacker: [{ id: 'x' }] } })).status).toBe(400);
+    expect((await post({ upsert: { people: [{ name: 'ohne id' }] } })).status).toBe(400);
     expect((await post({ version: 'x' })).status).toBe(400);
   });
 
   it('ersetzt den kompletten Bestand', async () => {
     const app = erstelleApp(db);
-    await app.request('/api/aenderungen', { method: 'POST', headers: H, body: JSON.stringify({ version: 3, speichern: { personen: [{ id: 'alt' }] } }) });
-    const neu = { version: 4, personen: [{ id: 'neu' }], rechnungen: [], einreichungen: [{ id: 'e1', personIds: ['neu'] }] };
+    await app.request('/api/changes', { method: 'POST', headers: H, body: JSON.stringify({ version: 3, upsert: { people: [{ id: 'alt' }] } }) });
+    const neu = { version: 1, people: [{ id: 'neu' }], invoices: [], submissions: [{ id: 'e1', personIds: ['neu'] }] };
     expect((await app.request('/api/state', { method: 'PUT', headers: H, body: JSON.stringify(neu) })).status).toBe(200);
     const s = (await (await app.request('/api/state')).json()).state;
-    expect(s).toEqual({ ...neu, dateien: [] });
+    expect(s).toEqual({ ...neu, files: [] });
   });
 
   it('speichert Belege binär und liefert sie wieder aus', async () => {
     const app = erstelleApp(db, { maxUploadBytes: 1000 });
     const inhalt = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0, 255]);
-    const res = await app.request('/api/dateien/d1', {
+    const res = await app.request('/api/files/d1', {
       method: 'PUT',
-      headers: { 'x-zettelwirtschaft': '1', 'content-type': 'application/pdf', 'x-dateiname': encodeURIComponent('Rechnung Ärztin.pdf') },
+      headers: { 'x-zettelwirtschaft': '1', 'content-type': 'application/pdf', 'x-file-name': encodeURIComponent('Rechnung Ärztin.pdf') },
       body: inhalt,
     });
     expect(res.status).toBe(200);
     const s = (await (await app.request('/api/state')).json()).state;
     expect(s).toBeNull(); // Dateien allein legen noch keinen Bestand an
-    const d = await app.request('/api/dateien/d1');
+    const d = await app.request('/api/files/d1');
     expect(d.headers.get('content-type')).toBe('application/pdf');
     expect(new Uint8Array(await d.arrayBuffer())).toEqual(inhalt);
-    await app.request('/api/aenderungen', { method: 'POST', headers: H, body: JSON.stringify({ version: 4 }) });
-    expect((await (await app.request('/api/state')).json()).state.dateien).toEqual([{ id: 'd1', name: 'Rechnung Ärztin.pdf', typ: 'application/pdf', groesse: 6 }]);
+    await app.request('/api/changes', { method: 'POST', headers: H, body: JSON.stringify({ version: 1 }) });
+    expect((await (await app.request('/api/state')).json()).state.files).toEqual([{ id: 'd1', name: 'Rechnung Ärztin.pdf', type: 'application/pdf', size: 6 }]);
 
-    const gross = await app.request('/api/dateien/d2', { method: 'PUT', headers: { 'x-zettelwirtschaft': '1' }, body: new Uint8Array(2000) });
+    const gross = await app.request('/api/files/d2', { method: 'PUT', headers: { 'x-zettelwirtschaft': '1' }, body: new Uint8Array(2000) });
     expect(gross.status).toBe(413);
-    await app.request('/api/dateien/d1', { method: 'DELETE', headers: H });
-    expect((await app.request('/api/dateien/d1')).status).toBe(404);
+    await app.request('/api/files/d1', { method: 'DELETE', headers: H });
+    expect((await app.request('/api/files/d1')).status).toBe(404);
   });
 
   it('liefert die Dateien für die Texterkennung aus', async () => {
@@ -131,7 +131,7 @@ describe.skipIf(!url)('Server-API', () => {
 
   it('verlangt den CSRF-Header für Änderungen', async () => {
     const app = erstelleApp(db);
-    const res = await app.request('/api/aenderungen', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{"version":1}' });
+    const res = await app.request('/api/changes', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{"version":1}' });
     expect(res.status).toBe(403);
   });
 

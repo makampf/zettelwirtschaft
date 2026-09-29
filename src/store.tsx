@@ -3,7 +3,7 @@ import { startState } from './defaults';
 import { neueId } from './format';
 import { migriere } from './migration';
 import { speicherErmitteln, type Speicher } from './storage';
-import type { AppState, DateiMeta, Einreichung, Person, Rechnung } from './types';
+import type { AppState, FileMeta, Submission, Person, Invoice } from './types';
 
 interface Store {
   state: AppState;
@@ -11,11 +11,11 @@ interface Store {
   personById: (id: string) => Person | undefined;
   speicherePerson: (p: Person) => void;
   loeschePerson: (id: string) => void;
-  speichereRechnung: (r: Rechnung) => void;
+  speichereRechnung: (r: Invoice) => void;
   loescheRechnung: (id: string) => Promise<void>;
-  speichereEinreichung: (e: Einreichung) => void;
+  speichereEinreichung: (e: Submission) => void;
   loescheEinreichung: (id: string) => Promise<void>;
-  dateienHinzufuegen: (files: File[]) => Promise<DateiMeta[]>;
+  dateienHinzufuegen: (files: File[]) => Promise<FileMeta[]>;
   dateienEntfernen: (ids: string[]) => Promise<void>;
   dateiOeffnen: (id: string) => Promise<void>;
   dateiLaden: (id: string) => Promise<Blob | undefined>;
@@ -96,7 +96,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     async (ids: string[]) => {
       if (!ids.length || !sp) return;
       await Promise.all(ids.map((id) => sp.loescheDatei(id)));
-      aendern((s) => ({ ...s, dateien: s.dateien.filter((d) => !ids.includes(d.id)) }));
+      aendern((s) => ({ ...s, files: s.files.filter((d) => !ids.includes(d.id)) }));
     },
     [aendern, sp],
   );
@@ -106,12 +106,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return {
       state,
       speicherArt: sp.art,
-      personById: (id) => state.personen.find((p) => p.id === id),
+      personById: (id) => state.people.find((p) => p.id === id),
       speicherePerson: (p) =>
         aendern((s) => ({
           ...s,
           // Partnerschaft beidseitig pflegen
-          personen: upsert(s.personen, p).map((x) => {
+          people: upsert(s.people, p).map((x) => {
             if (x.id === p.id) return x;
             if (x.id === p.partnerId) return { ...x, partnerId: p.id };
             if (x.partnerId === p.id) return { ...x, partnerId: undefined };
@@ -121,35 +121,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       loeschePerson: (id) =>
         aendern((s) => ({
           ...s,
-          personen: s.personen.filter((p) => p.id !== id).map((p) => (p.partnerId === id ? { ...p, partnerId: undefined } : p)),
-          einreichungen: s.einreichungen
+          people: s.people.filter((p) => p.id !== id).map((p) => (p.partnerId === id ? { ...p, partnerId: undefined } : p)),
+          submissions: s.submissions
             .map((e) => ({ ...e, personIds: e.personIds.filter((x) => x !== id) }))
             .filter((e) => e.personIds.length > 0),
         })),
-      speichereRechnung: (r) => aendern((s) => ({ ...s, rechnungen: upsert(s.rechnungen, r) })),
+      speichereRechnung: (r) => aendern((s) => ({ ...s, invoices: upsert(s.invoices, r) })),
       loescheRechnung: async (id) => {
-        const r = state.rechnungen.find((x) => x.id === id);
-        if (r) await dateienEntfernen(r.dateiIds);
+        const r = state.invoices.find((x) => x.id === id);
+        if (r) await dateienEntfernen(r.fileIds);
         aendern((s) => ({
           ...s,
-          rechnungen: s.rechnungen.filter((x) => x.id !== id),
-          einreichungen: s.einreichungen.map((e) => ({ ...e, positionen: e.positionen.filter((p) => p.rechnungId !== id) })),
+          invoices: s.invoices.filter((x) => x.id !== id),
+          submissions: s.submissions.map((e) => ({ ...e, items: e.items.filter((p) => p.invoiceId !== id) })),
         }));
       },
-      speichereEinreichung: (e) => aendern((s) => ({ ...s, einreichungen: upsert(s.einreichungen, e) })),
+      speichereEinreichung: (e) => aendern((s) => ({ ...s, submissions: upsert(s.submissions, e) })),
       loescheEinreichung: async (id) => {
-        const e = state.einreichungen.find((x) => x.id === id);
-        if (e) await dateienEntfernen(e.dateiIds);
-        aendern((s) => ({ ...s, einreichungen: s.einreichungen.filter((x) => x.id !== id) }));
+        const e = state.submissions.find((x) => x.id === id);
+        if (e) await dateienEntfernen(e.fileIds);
+        aendern((s) => ({ ...s, submissions: s.submissions.filter((x) => x.id !== id) }));
       },
       dateienHinzufuegen: async (files) => {
-        const metas: DateiMeta[] = [];
+        const metas: FileMeta[] = [];
         for (const f of files) {
-          const meta = { id: neueId(), name: f.name, typ: f.type || 'application/octet-stream', groesse: f.size };
+          const meta = { id: neueId(), name: f.name, type: f.type || 'application/octet-stream', size: f.size };
           await sp.speichereDatei(meta, f);
           metas.push(meta);
         }
-        aendern((s) => ({ ...s, dateien: [...s.dateien, ...metas] }));
+        aendern((s) => ({ ...s, files: [...s.files, ...metas] }));
         return metas;
       },
       dateienEntfernen,

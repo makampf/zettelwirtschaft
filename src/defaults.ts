@@ -6,11 +6,11 @@ export function neuePerson(name: string, farbe: string, beihilfeSatz: number | n
   return {
     id: neueId(),
     name,
-    farbe,
-    beihilfe: { berechtigt: beihilfeSatz != null, stelle: '', aktenzeichen: '', satzKrankheit: satz, satzPflege: satz, fristMonate: 12 },
-    pkv: { name: '', tarif: '', nummer: '', quote: 100 - satz, selbstbehaltProzent: 0, selbstbehaltMax: 0, breAktiv: false, bre: 0, mitPflege: false },
-    ppv: { name: '', tarif: '', nummer: '', quote: 100 - satz },
-    notiz: '',
+    color: farbe,
+    beihilfe: { eligible: beihilfeSatz != null, office: '', reference: '', rateIllness: satz, rateCare: satz, deadlineMonths: 12 },
+    pkv: { name: '', tariff: '', number: '', rate: 100 - satz, deductiblePercent: 0, deductibleMax: 0, premiumRefundEnabled: false, premiumRefund: 0, includesCare: false },
+    ppv: { name: '', tariff: '', number: '', rate: 100 - satz },
+    note: '',
   };
 }
 
@@ -18,23 +18,23 @@ export function neuePerson(name: string, farbe: string, beihilfeSatz: number | n
 export function eigeneStandardwerte(p: Person): Person {
   return {
     ...p,
-    beihilfe: { ...p.beihilfe, berechtigt: false, satzKrankheit: 0, satzPflege: 0 },
+    beihilfe: { ...p.beihilfe, eligible: false, rateIllness: 0, rateCare: 0 },
     pkv: {
       ...p.pkv,
-      quote: 100,
-      selbstbehaltProzent: 20,
-      selbstbehaltMax: 40000,
-      breAktiv: true,
-      bre: 100000,
-      mitPflege: true,
+      rate: 100,
+      deductiblePercent: 20,
+      deductibleMax: 40000,
+      premiumRefundEnabled: true,
+      premiumRefund: 100000,
+      includesCare: true,
     },
-    ppv: { ...p.ppv, quote: 100 },
+    ppv: { ...p.ppv, rate: 100 },
   };
 }
 
 /** Standardwerte für die Großeltern: Beihilfe (70 %) plus Versicherung mit Beitragsrückerstattung (Betrag noch offen). */
 export function grosselternStandardwerte(p: Person): Person {
-  return { ...p, pkv: { ...p.pkv, breAktiv: true } };
+  return { ...p, pkv: { ...p.pkv, premiumRefundEnabled: true } };
 }
 
 /** Startzustand: ich selbst (nur Versicherung) und die gemeinsam versicherten Großeltern (70 % Beihilfe). */
@@ -44,10 +44,10 @@ export function startState(): AppState {
   oma.partnerId = opa.id;
   opa.partnerId = oma.id;
   return {
-    version: 4,
-    personen: [eigeneStandardwerte(neuePerson('Ich', '#2563eb', null)), oma, opa],
-    rechnungen: [],
-    einreichungen: [],
-    dateien: [],
+    version: 1,
+    people: [eigeneStandardwerte(neuePerson('Ich', '#2563eb', null)), oma, opa],
+    invoices: [],
+    submissions: [],
+    files: [],
   };
 }

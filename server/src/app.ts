@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { compress } from 'hono/compress';
-import { SAMMLUNGEN, type Aenderungen, type Datenbank, type Datensatz, type Sammlung, type Zustand } from './db.js';
+import { COLLECTIONS, type Changes, type Collection, type DataRecord, type Datenbank, type State } from './db.js';
 
 export interface Optionen {
   /** Inhalt der ausgelieferten App (dist/index.html); ohne Angabe nur API. */
@@ -29,14 +29,14 @@ function gleich(a: string, b: string): boolean {
   return x.length === y.length && timingSafeEqual(x, y);
 }
 
-function istDatensatz(d: unknown): d is Datensatz {
-  return typeof d === 'object' && d !== null && !Array.isArray(d) && typeof (d as Datensatz).id === 'string' && (d as Datensatz).id.length > 0;
+function istDatensatz(d: unknown): d is DataRecord {
+  return typeof d === 'object' && d !== null && !Array.isArray(d) && typeof (d as DataRecord).id === 'string' && (d as DataRecord).id.length > 0;
 }
 
 function pruefeSammlungen(obj: unknown, pruefe: (x: unknown) => boolean): boolean {
   if (obj == null) return true;
   if (typeof obj !== 'object') return false;
-  return Object.entries(obj).every(([k, v]) => (SAMMLUNGEN as readonly string[]).includes(k) && Array.isArray(v) && v.every(pruefe));
+  return Object.entries(obj).every(([k, v]) => (COLLECTIONS as readonly string[]).includes(k) && Array.isArray(v) && v.every(pruefe));
 }
 
 export function erstelleApp(db: Datenbank, opt: Optionen = {}): Hono {
@@ -75,13 +75,13 @@ export function erstelleApp(db: Datenbank, opt: Optionen = {}): Hono {
     if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store');
   });
 
-  app.get('/api/status', (c) => c.json({ server: true, anmeldung: !!opt.passwort, version: opt.version ?? null }));
+  app.get('/api/status', (c) => c.json({ server: true, auth: !!opt.passwort, version: opt.version ?? null }));
 
   app.get('/api/state', async (c) => c.json({ state: await db.laden() }));
 
-  app.post('/api/aenderungen', async (c) => {
-    const a = await c.req.json<Aenderungen>().catch(() => null);
-    if (!a || (a.version != null && typeof a.version !== 'number') || !pruefeSammlungen(a.speichern, istDatensatz) || !pruefeSammlungen(a.loeschen, (x) => typeof x === 'string')) {
+  app.post('/api/changes', async (c) => {
+    const a = await c.req.json<Changes>().catch(() => null);
+    if (!a || (a.version != null && typeof a.version !== 'number') || !pruefeSammlungen(a.upsert, istDatensatz) || !pruefeSammlungen(a.delete, (x) => typeof x === 'string')) {
       return c.json({ fehler: 'Ungültige Änderungen' }, 400);
     }
     await db.aendern(a);
@@ -89,41 +89,41 @@ export function erstelleApp(db: Datenbank, opt: Optionen = {}): Hono {
   });
 
   app.put('/api/state', async (c) => {
-    const z = await c.req.json<Omit<Zustand, 'dateien'>>().catch(() => null);
-    if (!z || typeof z.version !== 'number' || !SAMMLUNGEN.every((s: Sammlung) => Array.isArray(z[s]) && z[s].every(istDatensatz))) {
+    const z = await c.req.json<Omit<State, 'files'>>().catch(() => null);
+    if (!z || typeof z.version !== 'number' || !COLLECTIONS.every((s: Collection) => Array.isArray(z[s]) && z[s].every(istDatensatz))) {
       return c.json({ fehler: 'Ungültiger Datenbestand' }, 400);
     }
     await db.ersetzen(z);
     return c.json({ ok: true });
   });
 
-  app.put('/api/dateien/:id', async (c) => {
+  app.put('/api/files/:id', async (c) => {
     const id = c.req.param('id');
     const laenge = Number(c.req.header('content-length') ?? 0);
     if (laenge > maxUpload) return c.json({ fehler: 'Datei zu groß' }, 413);
     const inhalt = Buffer.from(await c.req.arrayBuffer());
     if (inhalt.length > maxUpload) return c.json({ fehler: 'Datei zu groß' }, 413);
-    const name = decodeURIComponent(c.req.header('x-dateiname') ?? 'datei');
-    const typ = c.req.header('content-type') || 'application/octet-stream';
-    await db.dateiSpeichern({ id, name, typ, groesse: inhalt.length }, inhalt);
+    const name = decodeURIComponent(c.req.header('x-file-name') ?? 'file');
+    const type = c.req.header('content-type') || 'application/octet-stream';
+    await db.dateiSpeichern({ id, name, type, size: inhalt.length }, inhalt);
     return c.json({ ok: true });
   });
 
-  app.get('/api/dateien/:id', async (c) => {
+  app.get('/api/files/:id', async (c) => {
     const d = await db.dateiLaden(c.req.param('id'));
     if (!d) return c.json({ fehler: 'Nicht gefunden' }, 404);
-    return c.body(new Uint8Array(d.inhalt), 200, {
-      'Content-Type': d.typ,
+    return c.body(new Uint8Array(d.content), 200, {
+      'Content-Type': d.type,
       'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(d.name)}`,
     });
   });
 
-  app.delete('/api/dateien/:id', async (c) => {
+  app.delete('/api/files/:id', async (c) => {
     await db.dateiLoeschen(c.req.param('id'));
     return c.json({ ok: true });
   });
 
-  app.delete('/api/dateien', async (c) => {
+  app.delete('/api/files', async (c) => {
     await db.alleDateienLoeschen();
     return c.json({ ok: true });
   });

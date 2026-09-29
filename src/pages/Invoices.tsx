@@ -3,24 +3,24 @@ import { beihilfeFristEnde, breRelevant, erwartet, quote, rechnungUebersicht, se
 import { ProviderField } from '../components/ProviderField';
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, StatusBadge, useDateienSpeichern } from '../components/ui';
 import { erbringerListe, type ErbringerInfo } from '../providers';
-import { rechnungAuslesen, type Erkennung } from '../recognition/parser';
+import { rechnungAuslesen, type Recognition } from '../recognition/parser';
 import { istLesbar, textAusDatei } from '../recognition/text';
 import { datum, euro, heute, neueId } from '../format';
 import { useNav } from '../nav';
 import { useStore } from '../store';
-import { ART_NAME, KT_KURZ, KT_NAME, WEG_NAME, type Kostentraeger, type Leistungsart, type Rechnung } from '../types';
+import { ART_NAME, KT_KURZ, KT_NAME, WEG_NAME, type Payer, type ServiceKind, type Invoice } from '../types';
 
 /** Felder, die aus einem Beleg vorausgefüllt werden können. */
-type ErkanntesFeld = keyof Erkennung;
+type ErkanntesFeld = keyof Recognition;
 
 const FELD_NAME: Record<ErkanntesFeld, string> = {
-  betrag: 'Betrag',
-  datum: 'Rechnungsdatum',
-  faelligAm: 'Zahlungsziel',
-  rechnungsnummer: 'Rechnungsnummer',
-  leistungserbringer: 'Leistungserbringer',
-  art: 'Art',
-  vorsorge: 'Vorsorge',
+  amount: 'Betrag',
+  date: 'Rechnungsdatum',
+  dueDate: 'Zahlungsziel',
+  invoiceNumber: 'Rechnungsnummer',
+  provider: 'Leistungserbringer',
+  kind: 'Art',
+  preventive: 'Vorsorge',
   personId: 'Person',
 };
 
@@ -38,29 +38,29 @@ export default function Invoices() {
   const { state, personById } = useStore();
   const nav = useNav();
   const [filter, setFilter] = useState<Filter>('alle');
-  const [art, setArt] = useState<Leistungsart | ''>('');
+  const [art, setArt] = useState<ServiceKind | ''>('');
   const [jahr, setJahr] = useState('');
   const [suche, setSuche] = useState('');
   // `n` erzwingt ein frisches Formular bei „Speichern & nächste“
-  const [bearbeiten, setBearbeiten] = useState<{ r?: Rechnung; n: number; personId?: string; belege?: File[] } | null>(null);
+  const [bearbeiten, setBearbeiten] = useState<{ r?: Invoice; n: number; personId?: string; belege?: File[] } | null>(null);
 
   useEffect(() => {
     if (!nav.ziel) return;
     if (nav.ziel.neu) setBearbeiten({ n: 0, personId: nav.ziel.personId });
-    const r = state.rechnungen.find((x) => x.id === nav.ziel?.rechnungId);
+    const r = state.invoices.find((x) => x.id === nav.ziel?.rechnungId);
     if (r) setBearbeiten({ r, n: 0 });
     nav.zielErledigt();
-  }, [nav, state.rechnungen]);
+  }, [nav, state.invoices]);
 
-  const jahre = useMemo(() => [...new Set(state.rechnungen.map((r) => r.datum.slice(0, 4)))].sort().reverse(), [state.rechnungen]);
+  const jahre = useMemo(() => [...new Set(state.invoices.map((r) => r.date.slice(0, 4)))].sort().reverse(), [state.invoices]);
 
   const zeilen = useMemo(() => {
     const s = suche.trim().toLowerCase();
-    return state.rechnungen
+    return state.invoices
       .filter((r) => !nav.personFilter || r.personId === nav.personFilter)
-      .filter((r) => !art || r.art === art)
-      .filter((r) => !jahr || r.datum.startsWith(jahr))
-      .filter((r) => !s || [r.leistungserbringer, r.rechnungsnummer, r.beschreibung, r.notiz].some((t) => t.toLowerCase().includes(s)))
+      .filter((r) => !art || r.kind === art)
+      .filter((r) => !jahr || r.date.startsWith(jahr))
+      .filter((r) => !s || [r.provider, r.invoiceNumber, r.description, r.note].some((t) => t.toLowerCase().includes(s)))
       .map((r) => ({ r, person: personById(r.personId)! }))
       .filter((z) => z.person)
       .map((z) => ({ ...z, u: rechnungUebersicht(z.r, z.person, state) }))
@@ -68,15 +68,15 @@ export default function Invoices() {
         switch (filter) {
           case 'einreichen': return u.infos.some((i) => i.status === 'offen');
           case 'ausstehend': return u.infos.some((i) => i.status === 'eingereicht');
-          case 'unbezahlt': return !r.bezahltAm;
+          case 'unbezahlt': return !r.paidDate;
           case 'abgeschlossen': return u.abgeschlossen;
           default: return true;
         }
       })
-      .sort((a, b) => b.r.datum.localeCompare(a.r.datum));
+      .sort((a, b) => b.r.date.localeCompare(a.r.date));
   }, [state, nav.personFilter, art, jahr, suche, filter, personById]);
 
-  const summe = zeilen.reduce((s, z) => s + z.r.betrag, 0);
+  const summe = zeilen.reduce((s, z) => s + z.r.amount, 0);
   const eigen = zeilen.reduce((s, z) => s + z.u.eigenanteil, 0);
 
   return (
@@ -107,7 +107,7 @@ export default function Invoices() {
             <button key={f} className={filter === f ? 'aktiv' : ''} onClick={() => setFilter(f)}>{FILTER_NAME[f]}</button>
           ))}
         </div>
-        <select value={art} onChange={(e) => setArt(e.target.value as Leistungsart | '')} aria-label="Art">
+        <select value={art} onChange={(e) => setArt(e.target.value as ServiceKind | '')} aria-label="Art">
           <option value="">Krankheit &amp; Pflege</option>
           <option value="krankheit">Krankheit</option>
           <option value="pflege">Pflege</option>
@@ -139,15 +139,15 @@ export default function Invoices() {
             <tbody>
               {zeilen.map(({ r, person, u }) => (
                 <tr key={r.id} onClick={() => setBearbeiten({ r, n: 0 })}>
-                  <td>{datum(r.datum)}</td>
+                  <td>{datum(r.date)}</td>
                   <td><PersonChip person={person} /></td>
                   <td>
-                    <div>{r.leistungserbringer || '–'}{r.dateiIds.length > 0 && ' 📎'}{r.vorsorge && <span className="badge tag">Vorsorge</span>}</div>
-                    {(r.beschreibung || r.rechnungsnummer) && <small className="grau">{[r.rechnungsnummer && `Nr. ${r.rechnungsnummer}`, r.beschreibung].filter(Boolean).join(' · ')}</small>}
+                    <div>{r.provider || '–'}{r.fileIds.length > 0 && ' 📎'}{r.preventive && <span className="badge tag">Vorsorge</span>}</div>
+                    {(r.description || r.invoiceNumber) && <small className="grau">{[r.invoiceNumber && `Nr. ${r.invoiceNumber}`, r.description].filter(Boolean).join(' · ')}</small>}
                   </td>
-                  <td>{ART_NAME[r.art]}</td>
-                  <td className="zahl">{euro(r.betrag)}</td>
-                  <td>{r.bezahltAm ? <span className="ok">✓ {datum(r.bezahltAm)}</span> : r.faelligAm ? <span className={r.faelligAm < heute() ? 'rot' : ''}>fällig {datum(r.faelligAm)}</span> : <span className="grau">offen</span>}</td>
+                  <td>{ART_NAME[r.kind]}</td>
+                  <td className="zahl">{euro(r.amount)}</td>
+                  <td>{r.paidDate ? <span className="ok">✓ {datum(r.paidDate)}</span> : r.dueDate ? <span className={r.dueDate < heute() ? 'rot' : ''}>fällig {datum(r.dueDate)}</span> : <span className="grau">offen</span>}</td>
                   <td><div className="badges">{u.infos.map((i) => <StatusBadge key={i.kt} info={i} />)}</div></td>
                   <td className="zahl">{euro(u.eigenanteil)}</td>
                 </tr>
@@ -179,21 +179,21 @@ export default function Invoices() {
   );
 }
 
-function leereRechnung(personId: string, art: Leistungsart = 'krankheit'): Rechnung {
+function leereRechnung(personId: string, art: ServiceKind = 'illness'): Invoice {
   return {
     id: neueId(),
     personId,
-    art,
-    datum: heute(),
-    leistungserbringer: '',
-    rechnungsnummer: '',
-    beschreibung: '',
-    betrag: 0,
-    vorsorge: false,
-    nichtEinreichen: [],
-    erwartetManuell: {},
-    dateiIds: [],
-    notiz: '',
+    kind: art,
+    date: heute(),
+    provider: '',
+    invoiceNumber: '',
+    description: '',
+    amount: 0,
+    preventive: false,
+    heldBack: [],
+    expectedOverride: {},
+    fileIds: [],
+    note: '',
   };
 }
 
@@ -204,7 +204,7 @@ export function RechnungFormular({
   onClose,
   onNeu,
 }: {
-  rechnung?: Rechnung;
+  rechnung?: Invoice;
   personId?: string;
   /** Beim Öffnen schon ausgewählte Belege – werden sofort ausgelesen. */
   belege?: File[];
@@ -214,15 +214,15 @@ export function RechnungFormular({
   const { state, personById, speichereRechnung, loescheRechnung, dateiLaden } = useStore();
   const nav = useNav();
   const dateienSpeichern = useDateienSpeichern();
-  const [r, setR] = useState<Rechnung>(() => rechnung ?? leereRechnung(personId || nav.personFilter || state.personen[0]?.id || ''));
-  const [betrag, setBetrag] = useState<number | undefined>(rechnung?.betrag);
-  const [dateiIds, setDateiIds] = useState(r.dateiIds);
+  const [r, setR] = useState<Invoice>(() => rechnung ?? leereRechnung(personId || nav.personFilter || state.people[0]?.id || ''));
+  const [betrag, setBetrag] = useState<number | undefined>(rechnung?.amount);
+  const [dateiIds, setDateiIds] = useState(r.fileIds);
   const [neueDateien, setNeueDateien] = useState<File[]>(belege ?? []);
   const [speichert, setSpeichert] = useState(false);
   // Auslesen von Belegen: welche Felder wurden übernommen, was hat der Nutzer selbst eingegeben?
   const [erkannt, setErkannt] = useState<Set<ErkanntesFeld>>(new Set());
   const [leseStatus, setLeseStatus] = useState<{ art: 'laeuft' | 'ok' | 'leer' | 'fehler'; text: string } | null>(null);
-  const beruehrt = useRef(new Set<string>());
+  const beruehrt = useRef(new Set<keyof Invoice>());
   const [leseText, setLeseText] = useState<string | null>(null);
   // Bei neuen Rechnungen wird „Zurückhalten (BRE)“ vorbelegt, bis die Checkbox von Hand geändert wird.
   const [pkvManuell, setPkvManuell] = useState(!!rechnung);
@@ -233,21 +233,21 @@ export function RechnungFormular({
     if (pkvManuell || !person) return;
     const halten = standardZurueckhalten(r, person, state);
     setR((x) => {
-      const kt = versicherungFuer(x.art);
-      const ohne = x.nichtEinreichen.filter((k) => k !== 'pkv' && k !== 'ppv');
+      const kt = versicherungFuer(x.kind);
+      const ohne = x.heldBack.filter((k) => k !== 'pkv' && k !== 'ppv');
       const neu = halten ? [...ohne, kt] : ohne;
-      return neu.join() === x.nichtEinreichen.join() ? x : { ...x, nichtEinreichen: neu };
+      return neu.join() === x.heldBack.join() ? x : { ...x, heldBack: neu };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [r.personId, r.art, r.vorsorge, r.datum, pkvManuell, person, state]);
-  const set = <K extends keyof Rechnung>(k: K, v: Rechnung[K]) => {
+  }, [r.personId, r.kind, r.preventive, r.date, pkvManuell, person, state]);
+  const set = <K extends keyof Invoice>(k: K, v: Invoice[K]) => {
     beruehrt.current.add(k);
     setErkannt((e) => (e.has(k as ErkanntesFeld) ? new Set([...e].filter((x) => x !== k)) : e));
     setR((x) => ({ ...x, [k]: v }));
   };
   const setzeBetrag = (c: number | undefined) => {
-    beruehrt.current.add('betrag');
-    setErkannt((e) => new Set([...e].filter((x) => x !== 'betrag')));
+    beruehrt.current.add('amount');
+    setErkannt((e) => new Set([...e].filter((x) => x !== 'amount')));
     setBetrag(c);
   };
 
@@ -257,20 +257,20 @@ export function RechnungFormular({
     try {
       const text = await textAusDatei(datei, (t) => setLeseStatus({ art: 'laeuft', text: t }));
       setLeseText(text);
-      const e = rechnungAuslesen(text, { personen: state.personen, bekannteErbringer: erbringer, heute: heute() });
-      const frei = (k: string, leer: boolean) => !beruehrt.current.has(k) && (!rechnung || leer);
+      const e = rechnungAuslesen(text, { personen: state.people, bekannteErbringer: erbringer, heute: heute() });
+      const frei = (k: keyof Invoice, leer: boolean) => !beruehrt.current.has(k) && (!rechnung || leer);
       const uebernommen = new Set<ErkanntesFeld>();
-      const teil: Partial<Rechnung> = {};
-      if (e.betrag != null && frei('betrag', !betrag)) {
-        setBetrag(e.betrag);
-        uebernommen.add('betrag');
+      const teil: Partial<Invoice> = {};
+      if (e.amount != null && frei('amount', !betrag)) {
+        setBetrag(e.amount);
+        uebernommen.add('amount');
       }
-      if (e.datum && frei('datum', false)) (teil.datum = e.datum), uebernommen.add('datum');
-      if (e.faelligAm && frei('faelligAm', !r.faelligAm)) (teil.faelligAm = e.faelligAm), uebernommen.add('faelligAm');
-      if (e.rechnungsnummer && frei('rechnungsnummer', !r.rechnungsnummer)) (teil.rechnungsnummer = e.rechnungsnummer), uebernommen.add('rechnungsnummer');
-      if (e.leistungserbringer && frei('leistungserbringer', !r.leistungserbringer)) (teil.leistungserbringer = e.leistungserbringer), uebernommen.add('leistungserbringer');
-      if (e.art && e.art !== r.art && frei('art', false)) (teil.art = e.art), uebernommen.add('art');
-      if (e.vorsorge && frei('vorsorge', false)) (teil.vorsorge = true), uebernommen.add('vorsorge');
+      if (e.date && frei('date', false)) (teil.date = e.date), uebernommen.add('date');
+      if (e.dueDate && frei('dueDate', !r.dueDate)) (teil.dueDate = e.dueDate), uebernommen.add('dueDate');
+      if (e.invoiceNumber && frei('invoiceNumber', !r.invoiceNumber)) (teil.invoiceNumber = e.invoiceNumber), uebernommen.add('invoiceNumber');
+      if (e.provider && frei('provider', !r.provider)) (teil.provider = e.provider), uebernommen.add('provider');
+      if (e.kind && e.kind !== r.kind && frei('kind', false)) (teil.kind = e.kind), uebernommen.add('kind');
+      if (e.preventive && frei('preventive', false)) (teil.preventive = true), uebernommen.add('preventive');
       if (e.personId && e.personId !== r.personId && frei('personId', false)) (teil.personId = e.personId), uebernommen.add('personId');
       setR((x) => ({ ...x, ...teil }));
       setErkannt(uebernommen);
@@ -303,28 +303,28 @@ export function RechnungFormular({
     const neu = [...neueDateien].reverse().find(istLesbar);
     if (neu) return auslesen(neu);
     for (const id of [...dateiIds].reverse()) {
-      const meta = state.dateien.find((d) => d.id === id);
+      const meta = state.files.find((d) => d.id === id);
       if (!meta) continue;
       const blob = await dateiLaden(id);
       if (!blob) continue;
-      const datei = new File([blob], meta.name, { type: meta.typ });
+      const datei = new File([blob], meta.name, { type: meta.type });
       if (istLesbar(datei)) return auslesen(datei);
     }
     setLeseStatus({ art: 'leer', text: 'Kein lesbarer Beleg (PDF oder Bild) vorhanden.' });
   }
-  const vorschau = { ...r, betrag: betrag ?? 0 };
+  const vorschau = { ...r, amount: betrag ?? 0 };
 
   // Leistungserbringer-Vorschläge aus bisherigen Rechnungen (ohne die gerade bearbeitete)
-  const erbringerInfos = useMemo(() => erbringerListe(state.rechnungen.filter((x) => x.id !== r.id)), [state.rechnungen, r.id]);
+  const erbringerInfos = useMemo(() => erbringerListe(state.invoices.filter((x) => x.id !== r.id)), [state.invoices, r.id]);
   const erbringer = useMemo(() => erbringerInfos.map((e) => e.name), [erbringerInfos]);
   const [vorlageHinweis, setVorlageHinweis] = useState<string | null>(null);
 
   /** Bekannter Erbringer gewählt: Art und (eindeutige) Person wie bei den bisherigen Rechnungen übernehmen. */
   function erbringerGewaehlt(info: ErbringerInfo) {
-    const teil: Partial<Rechnung> = {};
+    const teil: Partial<Invoice> = {};
     const uebernommen: string[] = [];
-    if (!beruehrt.current.has('art') && !erkannt.has('art') && info.art !== r.art) {
-      teil.art = info.art;
+    if (!beruehrt.current.has('kind') && !erkannt.has('kind') && info.art !== r.kind) {
+      teil.kind = info.art;
       uebernommen.push(ART_NAME[info.art]);
     }
     if (!rechnung && info.personId && info.personId !== r.personId && !beruehrt.current.has('personId') && !erkannt.has('personId')) {
@@ -336,7 +336,7 @@ export function RechnungFormular({
       setVorlageHinweis(`Wie bei den bisherigen Rechnungen: ${uebernommen.join(', ')}`);
     }
   }
-  const hatLesbarenBeleg = neueDateien.some(istLesbar) || dateiIds.some((id) => /pdf|image/.test(state.dateien.find((d) => d.id === id)?.typ ?? ''));
+  const hatLesbarenBeleg = neueDateien.some(istLesbar) || dateiIds.some((id) => /pdf|image/.test(state.files.find((d) => d.id === id)?.type ?? ''));
 
   const belegFeld = (
     <Feld label="Belege" gruppe breit hinweis={!rechnung ? 'PDF oder Foto hinzufügen – die Angaben werden automatisch ausgelesen' : undefined}>
@@ -358,8 +358,8 @@ export function RechnungFormular({
     if (betrag == null || !person) return;
     setSpeichert(true);
     try {
-      const ids = await dateienSpeichern(rechnung?.dateiIds ?? [], dateiIds, neueDateien);
-      speichereRechnung({ ...r, betrag, dateiIds: ids });
+      const ids = await dateienSpeichern(rechnung?.fileIds ?? [], dateiIds, neueDateien);
+      speichereRechnung({ ...r, amount: betrag, fileIds: ids });
       if (undNeu && onNeu) onNeu(r.personId);
       else onClose();
     } finally {
@@ -387,56 +387,56 @@ export function RechnungFormular({
         <div className="raster">
           <Feld label="Person" erkannt={erkannt.has('personId')}>
             <select value={r.personId} onChange={(e) => set('personId', e.target.value)} required>
-              {state.personen.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {state.people.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </Feld>
-          <Feld label="Art" gruppe erkannt={erkannt.has('art')}>
+          <Feld label="Art" gruppe erkannt={erkannt.has('kind')}>
             <div className="segmente">
-              {(['krankheit', 'pflege'] as Leistungsart[]).map((a) => (
-                <button type="button" key={a} className={r.art === a ? 'aktiv' : ''} onClick={() => set('art', a)}>{ART_NAME[a]}</button>
+              {(['illness', 'care'] as ServiceKind[]).map((a) => (
+                <button type="button" key={a} className={r.kind === a ? 'aktiv' : ''} onClick={() => set('kind', a)}>{ART_NAME[a]}</button>
               ))}
             </div>
           </Feld>
-          <Feld label="Rechnungsdatum" erkannt={erkannt.has('datum')}>
-            <input type="date" value={r.datum} onChange={(e) => set('datum', e.target.value)} required />
+          <Feld label="Rechnungsdatum" erkannt={erkannt.has('date')}>
+            <input type="date" value={r.date} onChange={(e) => set('date', e.target.value)} required />
           </Feld>
-          <Feld label="Betrag" erkannt={erkannt.has('betrag')}>
+          <Feld label="Betrag" erkannt={erkannt.has('amount')}>
             <BetragFeld wert={betrag} onChange={setzeBetrag} pflicht />
           </Feld>
-          <Feld label="Leistungserbringer" hinweis="Arzt, Apotheke, Pflegedienst, Heim …" erkannt={erkannt.has('leistungserbringer')}>
+          <Feld label="Leistungserbringer" hinweis="Arzt, Apotheke, Pflegedienst, Heim …" erkannt={erkannt.has('provider')}>
             <ProviderField
-              wert={r.leistungserbringer}
+              wert={r.provider}
               liste={erbringerInfos}
               onChange={(name) => {
                 setVorlageHinweis(null);
-                set('leistungserbringer', name);
+                set('provider', name);
               }}
               onAuswahl={erbringerGewaehlt}
               pflicht
             />
             {vorlageHinweis && <small className="ok">{vorlageHinweis}</small>}
           </Feld>
-          <Feld label="Rechnungsnummer" erkannt={erkannt.has('rechnungsnummer')}>
-            <input value={r.rechnungsnummer} onChange={(e) => set('rechnungsnummer', e.target.value)} />
+          <Feld label="Rechnungsnummer" erkannt={erkannt.has('invoiceNumber')}>
+            <input value={r.invoiceNumber} onChange={(e) => set('invoiceNumber', e.target.value)} />
           </Feld>
           <Feld label="Beschreibung" breit>
-            <input value={r.beschreibung} placeholder="z. B. Behandlung 03/2026, Heimkosten September" onChange={(e) => set('beschreibung', e.target.value)} />
+            <input value={r.description} placeholder="z. B. Behandlung 03/2026, Heimkosten September" onChange={(e) => set('description', e.target.value)} />
           </Feld>
-          {r.art === 'krankheit' && (
-            <Feld label="Vorsorge" hinweis="Ohne Selbstbehalt, gefährdet die Beitragsrückerstattung nicht" erkannt={erkannt.has('vorsorge')}>
+          {r.kind === 'illness' && (
+            <Feld label="Vorsorge" hinweis="Ohne Selbstbehalt, gefährdet die Beitragsrückerstattung nicht" erkannt={erkannt.has('preventive')}>
               <label className="checkbox">
-                <input type="checkbox" checked={r.vorsorge} onChange={(e) => set('vorsorge', e.target.checked)} />
+                <input type="checkbox" checked={r.preventive} onChange={(e) => set('preventive', e.target.checked)} />
                 Vorsorgeuntersuchung
               </label>
             </Feld>
           )}
-          <Feld label="Zahlbar bis" erkannt={erkannt.has('faelligAm')}>
-            <input type="date" value={r.faelligAm ?? ''} onChange={(e) => set('faelligAm', e.target.value || undefined)} />
+          <Feld label="Zahlbar bis" erkannt={erkannt.has('dueDate')}>
+            <input type="date" value={r.dueDate ?? ''} onChange={(e) => set('dueDate', e.target.value || undefined)} />
           </Feld>
           <Feld label="Bezahlt am" gruppe>
             <div className="zeile">
-              <input type="date" value={r.bezahltAm ?? ''} onChange={(e) => set('bezahltAm', e.target.value || undefined)} />
-              {!r.bezahltAm && <button type="button" className="klein" onClick={() => set('bezahltAm', heute())}>Heute</button>}
+              <input type="date" value={r.paidDate ?? ''} onChange={(e) => set('paidDate', e.target.value || undefined)} />
+              {!r.paidDate && <button type="button" className="klein" onClick={() => set('paidDate', heute())}>Heute</button>}
             </div>
           </Feld>
         </div>
@@ -445,17 +445,17 @@ export function RechnungFormular({
           <fieldset>
             <legend>Einreichung &amp; Erstattung</legend>
             <div className="traeger-liste">
-              {traegerFuer(r.art, person).map((kt) => (
+              {traegerFuer(r.kind, person).map((kt) => (
                 <TraegerZeile
                   key={kt}
                   kt={kt}
                   rechnung={vorschau}
-                  quoteProzent={quote(person, r.art, kt)}
-                  berechnet={erwartet({ ...vorschau, erwartetManuell: {} }, person, kt, state.rechnungen)}
-                  selbstbehalt={kt === versicherungFuer(r.art) ? selbstbehalt(vorschau, person, state.rechnungen) : 0}
-                  bre={kt === versicherungFuer(r.art) && breRelevant(vorschau, person)}
+                  quoteProzent={quote(person, r.kind, kt)}
+                  berechnet={erwartet({ ...vorschau, expectedOverride: {} }, person, kt, state.invoices)}
+                  selbstbehalt={kt === versicherungFuer(r.kind) ? selbstbehalt(vorschau, person, state.invoices) : 0}
+                  bre={kt === versicherungFuer(r.kind) && breRelevant(vorschau, person)}
                   onChange={(teil) => {
-                    if (teil.nichtEinreichen) setPkvManuell(true);
+                    if (teil.heldBack) setPkvManuell(true);
                     setR((x) => ({ ...x, ...teil }));
                   }}
                   status={rechnung ? traegerInfo(vorschau, person, kt, state) : undefined}
@@ -463,15 +463,15 @@ export function RechnungFormular({
                 />
               ))}
             </div>
-            {traegerFuer(r.art, person).includes('beihilfe') && r.datum && (
-              <small className="grau">Beihilfe-Antragsfrist ({person.beihilfe.fristMonate} Monate): bis {datum(beihilfeFristEnde(r, person))}</small>
+            {traegerFuer(r.kind, person).includes('beihilfe') && r.date && (
+              <small className="grau">Beihilfe-Antragsfrist ({person.beihilfe.deadlineMonths} Monate): bis {datum(beihilfeFristEnde(r, person))}</small>
             )}
           </fieldset>
         )}
 
         {rechnung && belegFeld}
         <Feld label="Notiz" breit>
-          <textarea rows={2} value={r.notiz} onChange={(e) => set('notiz', e.target.value)} />
+          <textarea rows={2} value={r.note} onChange={(e) => set('note', e.target.value)} />
         </Feld>
 
         <div className="aktionen">
@@ -512,18 +512,18 @@ function TraegerZeile({
   onChange,
   onEinreichung,
 }: {
-  kt: Kostentraeger;
-  rechnung: Rechnung;
+  kt: Payer;
+  rechnung: Invoice;
   quoteProzent: number;
   berechnet: number;
   selbstbehalt: number;
   bre: boolean;
   status?: ReturnType<typeof traegerInfo>;
-  onChange: (teil: Partial<Rechnung>) => void;
+  onChange: (teil: Partial<Invoice>) => void;
   onEinreichung: (id: string) => void;
 }) {
-  const nicht = rechnung.nichtEinreichen.includes(kt);
-  const manuell = rechnung.erwartetManuell[kt];
+  const nicht = rechnung.heldBack.includes(kt);
+  const manuell = rechnung.expectedOverride[kt];
   const e = status?.einreichung;
   return (
     <div className="traeger">
@@ -534,9 +534,9 @@ function TraegerZeile({
       {e && (
         <small>
           <button type="button" className="link" onClick={() => onEinreichung(e.id)}>
-            Eingereicht am {datum(e.eingereichtAm)} per {WEG_NAME[e.weg]}{e.referenz && ` (${e.referenz})`}
+            Eingereicht am {datum(e.submittedDate)} per {WEG_NAME[e.channel]}{e.reference && ` (${e.reference})`}
           </button>
-          {e.bescheidAm && ` · Bescheid vom ${datum(e.bescheidAm)}`}
+          {e.decisionDate && ` · Bescheid vom ${datum(e.decisionDate)}`}
         </small>
       )}
       {!e && (
@@ -545,7 +545,7 @@ function TraegerZeile({
             type="checkbox"
             checked={nicht}
             onChange={(ev) =>
-              onChange({ nichtEinreichen: ev.target.checked ? [...rechnung.nichtEinreichen, kt] : rechnung.nichtEinreichen.filter((x) => x !== kt) })
+              onChange({ heldBack: ev.target.checked ? [...rechnung.heldBack, kt] : rechnung.heldBack.filter((x) => x !== kt) })
             }
           />
           {bre ? 'Zurückhalten für Beitragsrückerstattung' : `Nicht bei ${KT_KURZ[kt]} einreichen`}
@@ -558,10 +558,10 @@ function TraegerZeile({
             wert={manuell}
             placeholder={`${(berechnet / 100).toFixed(2).replace('.', ',')}`}
             onChange={(c) => {
-              const neu = { ...rechnung.erwartetManuell };
+              const neu = { ...rechnung.expectedOverride };
               if (c == null) delete neu[kt];
               else neu[kt] = c;
-              onChange({ erwartetManuell: neu });
+              onChange({ expectedOverride: neu });
             }}
           />
           <small className="grau">{manuell == null ? `${quoteProzent} % laut Person` : 'manuell'}</small>

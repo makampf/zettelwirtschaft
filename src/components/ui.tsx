@@ -105,7 +105,7 @@ export function BetragFeld({
 export function PersonChip({ person }: { person?: Person }) {
   if (!person) return <span className="chip">?</span>;
   return (
-    <span className="chip" style={{ '--farbe': person.farbe } as React.CSSProperties}>
+    <span className="chip" style={{ '--farbe': person.color } as React.CSSProperties}>
       {person.name}
     </span>
   );
@@ -138,13 +138,13 @@ export function DateiFeld({
   onNeue: (files: File[]) => void;
 }) {
   const { state, dateiOeffnen } = useStore();
-  const metas = vorhandene.map((id) => state.dateien.find((d) => d.id === id)).filter((d) => d != null);
+  const metas = vorhandene.map((id) => state.files.find((d) => d.id === id)).filter((d) => d != null);
   return (
     <div className="dateien">
       {metas.map((d) => (
         <div key={d.id} className="datei">
           <button type="button" className="link" onClick={() => dateiOeffnen(d.id)}>📎 {d.name}</button>
-          <small>{dateigroesse(d.groesse)}</small>
+          <small>{dateigroesse(d.size)}</small>
           <button type="button" className="icon" aria-label="Entfernen" onClick={() => onVorhandene(vorhandene.filter((x) => x !== d.id))}>✕</button>
         </div>
       ))}

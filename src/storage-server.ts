@@ -1,8 +1,8 @@
 import type { Speicher } from './storage';
-import type { AppState, DateiMeta } from './types';
+import type { AppState, FileMeta } from './types';
 
 // Speicherung in der Postgres-Datenbank des Servers (siehe server/).
-const SAMMLUNGEN = ['personen', 'rechnungen', 'einreichungen'] as const;
+const SAMMLUNGEN = ['people', 'invoices', 'submissions'] as const;
 type Sammlung = (typeof SAMMLUNGEN)[number];
 type Stand = { version: number; daten: Record<Sammlung, Map<string, string>> };
 
@@ -30,19 +30,19 @@ export function serverSpeicher(): Speicher {
   let kette: Promise<void> = Promise.resolve();
 
   async function sende(state: AppState): Promise<void> {
-    const speichern: Partial<Record<Sammlung, { id: string }[]>> = {};
-    const loeschen: Partial<Record<Sammlung, string[]>> = {};
+    const upsert: Partial<Record<Sammlung, { id: string }[]>> = {};
+    const remove: Partial<Record<Sammlung, string[]>> = {};
     let geaendert = !stand || stand.version !== state.version;
     for (const k of SAMMLUNGEN) {
       const alt = stand?.daten[k] ?? new Map<string, string>();
       const neu = state[k].filter((d) => alt.get(d.id) !== JSON.stringify(d));
       const weg = [...alt.keys()].filter((id) => !state[k].some((d) => d.id === id));
-      if (neu.length) speichern[k] = neu;
-      if (weg.length) loeschen[k] = weg;
+      if (neu.length) upsert[k] = neu;
+      if (weg.length) remove[k] = weg;
       geaendert ||= neu.length > 0 || weg.length > 0;
     }
     if (!geaendert) return;
-    await api('POST', 'api/aenderungen', JSON.stringify({ version: state.version, speichern, loeschen }), { 'Content-Type': 'application/json' });
+    await api('POST', 'api/changes', JSON.stringify({ version: state.version, upsert, delete: remove }), { 'Content-Type': 'application/json' });
     stand = standVon(state);
   }
 
@@ -61,28 +61,28 @@ export function serverSpeicher(): Speicher {
       kette = kette.catch(() => undefined).then(() => sende(state));
       return kette;
     },
-    async speichereDatei(meta: DateiMeta, blob: Blob) {
-      await api('PUT', `api/dateien/${encodeURIComponent(meta.id)}`, blob, {
-        'Content-Type': meta.typ || 'application/octet-stream',
-        'X-Dateiname': encodeURIComponent(meta.name),
+    async speichereDatei(meta: FileMeta, blob: Blob) {
+      await api('PUT', `api/files/${encodeURIComponent(meta.id)}`, blob, {
+        'Content-Type': meta.type || 'application/octet-stream',
+        'X-File-Name': encodeURIComponent(meta.name),
       });
     },
     async ladeDatei(id: string) {
-      const res = await fetch(`api/dateien/${encodeURIComponent(id)}`, { credentials: 'same-origin' });
+      const res = await fetch(`api/files/${encodeURIComponent(id)}`, { credentials: 'same-origin' });
       return res.ok ? res.blob() : undefined;
     },
-    dateiUrl: (id: string) => `api/dateien/${encodeURIComponent(id)}`,
+    dateiUrl: (id: string) => `api/files/${encodeURIComponent(id)}`,
     async loescheDatei(id: string) {
-      await api('DELETE', `api/dateien/${encodeURIComponent(id)}`);
+      await api('DELETE', `api/files/${encodeURIComponent(id)}`);
     },
     async ersetzeAlles(state: AppState, dateien: Map<string, Blob>) {
       await kette.catch(() => undefined);
-      await api('DELETE', 'api/dateien');
-      for (const d of state.dateien) {
+      await api('DELETE', 'api/files');
+      for (const d of state.files) {
         const blob = dateien.get(d.id);
         if (blob) await this.speichereDatei(d, blob);
       }
-      const { dateien: _ohne, ...rest } = state;
+      const { files: _ohne, ...rest } = state;
       await api('PUT', 'api/state', JSON.stringify(rest), { 'Content-Type': 'application/json' });
       stand = standVon(state);
     },

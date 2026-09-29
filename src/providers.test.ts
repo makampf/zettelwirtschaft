@@ -1,23 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { bekannterErbringerImText, erbringerListe, erbringerVorschlaege, normalisiere } from './providers';
 import { rechnungAuslesen } from './recognition/parser';
-import type { Leistungsart, Rechnung } from './types';
+import type { ServiceKind, Invoice } from './types';
 
 let n = 0;
-const r = (leistungserbringer: string, datum: string, personId = 'oma', art: Leistungsart = 'krankheit'): Rechnung => ({
+const r = (leistungserbringer: string, datum: string, personId = 'oma', art: ServiceKind = 'illness'): Invoice => ({
   id: `r${++n}`,
   personId,
-  art,
-  datum,
-  leistungserbringer,
-  rechnungsnummer: '',
-  beschreibung: '',
-  betrag: 100,
-  vorsorge: false,
-  nichtEinreichen: [],
-  erwartetManuell: {},
-  dateiIds: [],
-  notiz: '',
+  kind: art,
+  date: datum,
+  provider: leistungserbringer,
+  invoiceNumber: '',
+  description: '',
+  amount: 100,
+  preventive: false,
+  heldBack: [],
+  expectedOverride: {},
+  fileIds: [],
+  note: '',
 });
 
 const rechnungen = [
@@ -26,7 +26,7 @@ const rechnungen = [
   r('hausarzt dr. weiß', '2026-06-01', 'oma'), // andere Schreibweise, gleicher Erbringer
   r('Apotheke am Markt', '2026-09-01', 'ich'),
   r('Apotheke am Markt', '2026-02-01', 'ich'),
-  r('Seniorenzentrum Sonnenhof', '2026-08-01', 'oma', 'pflege'),
+  r('Seniorenzentrum Sonnenhof', '2026-08-01', 'oma', 'care'),
   r('Zahnarztpraxis Dr. Zahn', '2025-03-01', 'ich'),
 ];
 
@@ -44,7 +44,7 @@ describe('Leistungserbringer', () => {
 
   it('merkt sich Art und – falls eindeutig – die Person', () => {
     const info = Object.fromEntries(liste.map((e) => [e.name, e]));
-    expect(info['Seniorenzentrum Sonnenhof']).toMatchObject({ art: 'pflege', personId: 'oma' });
+    expect(info['Seniorenzentrum Sonnenhof']).toMatchObject({ art: 'care', personId: 'oma' });
     expect(info['Apotheke am Markt'].personId).toBe('ich');
     expect(info['hausarzt dr. weiß'].personId).toBeUndefined(); // Oma und Opa
   });
@@ -83,6 +83,6 @@ describe('Leistungserbringer', () => {
       personen: [],
       bekannteErbringer: liste.map((x) => x.name),
     });
-    expect(e.leistungserbringer).toBe('hausarzt dr. weiß');
+    expect(e.provider).toBe('hausarzt dr. weiß');
   });
 });
