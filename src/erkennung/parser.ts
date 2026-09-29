@@ -1,4 +1,4 @@
-import { bekannterErbringerImText } from '../erbringer';
+import { bekannterErbringerImText, kennwoerter } from '../erbringer';
 import { plusTage } from '../format';
 import type { Leistungsart, Person } from '../types';
 
@@ -76,7 +76,7 @@ const MONATE: Record<string, number> = {
   jan: 1, januar: 1, feb: 2, februar: 2, mär: 3, märz: 3, maerz: 3, mrz: 3, apr: 4, april: 4, mai: 5, jun: 6, juni: 6,
   jul: 7, juli: 7, aug: 8, august: 8, sep: 9, sept: 9, september: 9, okt: 10, oktober: 10, nov: 11, november: 11, dez: 12, dezember: 12,
 };
-const DATUM_ZAHL = /(?<!\d)(\d{1,2})\.\s?(\d{1,2})\.\s?(\d{4}|\d{2})(?!\d)/g;
+const DATUM_ZAHL = /(?<!\d)(\d{1,2})\.\s{0,3}(\d{1,2})\.\s{0,3}(\d{4}|\d{2})(?![\d,])/g;
 const DATUM_TEXT = /(?<!\d)(\d{1,2})\.?\s+(januar|februar|märz|maerz|april|mai|juni|juli|august|september|oktober|november|dezember|jan|feb|mär|mrz|apr|jun|jul|aug|sept|sep|okt|nov|dez)\.?\s+(\d{4})/gi;
 
 function iso(t: number, m: number, j: number): string | undefined {
@@ -132,12 +132,17 @@ function findeDatum(zeilen: string[], heute: string): string | undefined {
   return kandidaten.sort().pop();
 }
 
+const ZAHLWOERTER: Record<string, number> = {
+  drei: 3, fünf: 5, sieben: 7, acht: 8, zehn: 10, vierzehn: 14, fünfzehn: 15, zwanzig: 20, einundzwanzig: 21, dreißig: 30, dreissig: 30, sechzig: 60,
+};
+
 function findeFaellig(zeilen: string[], datum: string | undefined): string | undefined {
   const d = datumNachSchluessel(zeilen, /zahlbar\s+bis|fällig\s+(am|bis)|zahlungsziel|spätestens\s+(am|bis)|bis\s+zum|zahlen\s+sie\s+bis|bitte\s+bis|fälligkeit/i);
   if (d) return d;
   const text = zeilen.join(' ');
-  const frist = /(?:innerhalb|binnen)\s+(?:von\s+)?(\d{1,3})\s+tagen/i.exec(text);
-  if (frist && datum) return plusTage(datum, Number(frist[1]));
+  const frist = /(?:innerhalb|binnen)\s+(?:von\s+)?(\d{1,3}|[a-zäöüß]+)\s+tagen/i.exec(text);
+  const tage = frist && (Number(frist[1]) || ZAHLWOERTER[frist[1].toLowerCase()]);
+  if (tage && datum) return plusTage(datum, tage);
   if (/zahlbar\s+sofort|sofort\s+fällig/i.test(text) && datum) return datum;
   return undefined;
 }
@@ -147,13 +152,15 @@ function findeFaellig(zeilen: string[], datum: string | undefined): string | und
 
 /** Bezeichnungen der Rechnungsnummer mit Gewicht. Wortgrenzen verhindern Treffer in „Ihre Nr.“ / „Unsere Nr.“. */
 const NR_SCHLUESSEL: [RegExp, number][] = [
-  [/\brechnungs[-\s]?(?:nummer|nr|no)\b\.?/gi, 3],
+  [/\brechnungs?[-\s]?(?:nummer|nr|no)\b\.?/gi, 3],
   [/\brechnung\s+(?:nr|no)\b\.?/gi, 3],
   [/\b(?:rg|re)\.?[-\s]?nr\b\.?/gi, 2],
   [/\binvoice\s*(?:no|nr|number)\b\.?/gi, 2],
   [/\bbeleg[-\s]?(?:nummer|nr)\b\.?/gi, 1],
 ];
-const NR_WERT = /^([A-Za-z0-9][A-Za-z0-9\-/.]{1,30})/;
+// Wert, ggf. mit Leerzeichen gedruckt („123456 789“) – Folgegruppen nur aus Ziffern und danach Leerraum/Ende,
+// damit Beträge („12,50“) oder Daten („01.02.2026“) nicht angehängt werden
+const NR_WERT = /^([A-Za-z0-9][A-Za-z0-9\-/.]{1,30}(?: \d{2,}(?=\s|$))*)/;
 const SPALTEN = /\s{3,}/;
 
 /** Prüft einen möglichen Wert und liefert Zusatzpunkte – oder null, wenn er keine Rechnungsnummer sein kann. */
@@ -169,7 +176,7 @@ function nrBewertung(wert: string): number | null {
 function findeRechnungsnummer(zeilen: string[]): string | undefined {
   let bester: { wert: string; punkte: number } | undefined;
   const pruefe = (roh: string | undefined, punkte: number) => {
-    const wert = roh?.trim().match(NR_WERT)?.[1].replace(/[.]$/, '');
+    const wert = roh?.trim().match(NR_WERT)?.[1].replace(/[.]$/, '').replace(/ /g, '');
     const zusatz = wert ? nrBewertung(wert) : null;
     if (wert && zusatz != null && (!bester || punkte + zusatz > bester.punkte)) bester = { wert, punkte: punkte + zusatz };
   };
@@ -179,7 +186,7 @@ function findeRechnungsnummer(zeilen: string[]): string | undefined {
       for (const m of zeile.matchAll(re)) {
         const ende = (m.index ?? 0) + m[0].length;
         const rest = zeile.slice(ende);
-        // 1. Wert direkt dahinter („Rechnungsnummer: 987654321“)
+        // 1. Wert direkt dahinter („Rechnungsnummer: 4711“)
         if (!SPALTEN.test(rest.match(/^\s*[:#]?\s*/)?.[0] ?? '') || /^\s*[:#]/.test(rest)) {
           pruefe(rest.replace(/^\s*[:#]?\s*/, ''), gewicht);
         }
@@ -214,7 +221,10 @@ function findeErbringer(zeilen: string[], text: string, bekannte: string[]): str
     if (KEIN_ERBRINGER.test(z)) continue;
     const teil = z.split(/\s[·|•–-]\s|\s{3,}|,\s(?=\d{5}\s)/).find((t) => ERBRINGER.test(t));
     if (teil) {
-      const sauber = teil.replace(/^[\s·|•–-]+|[\s·|•–,-]+$/g, '').trim();
+      let sauber = teil.replace(/^[\s·|•–-]+|[\s·|•–,-]+$/g, '').trim();
+      // Nur allgemeine Wörter („Praxis für Ergotherapie“)? Dann den Ort aus derselben Zeile ergänzen.
+      const ort = /\b\d{5}\s+([A-ZÄÖÜ][A-Za-zäöüß-]+)/.exec(z)?.[1];
+      if (!kennwoerter(sauber).length && ort) sauber = `${sauber} ${ort}`;
       if (sauber.length >= 4 && sauber.length <= 70) return sauber;
     }
   }

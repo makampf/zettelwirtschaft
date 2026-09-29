@@ -138,6 +138,55 @@ describe('Rechnung auslesen', () => {
     });
   });
 
+  // Nachbildungen typischer Praxisrechnungen (Aufbau wie von pdf.js gelesen)
+  const PRAXIS_1 = `www.beispiel.de
+Praxis für Ergotherapie   | Musterweg 8   | 90000 Musterstadt   Praxis für   Musterweg 8
+Herr   Ergo- und Handtherapie   90000 Musterstadt
+Max Mustermann
+Telefax: 09999 1234567
+Datum:   01.08.2026
+Rechnung
+Therapeut:   Paul Beispiel,   LANR:   987654321
+Rechnung-Nr.:202608471
+Datum   Ziffer   Anzahl   Faktor   Betrag   Leistungstext
+BSNR: 999999900
+Steuernr.: 123/456/78901
+Rechnungsnummer: 202608 471
+Nettobetrag:   502,74 €
+Gesamtbetrag:   502,74 €
+Bitte überweisen Sie den Gesamtbetrag bis zum 23.08.2026 auf eines der nebenstehenden
+Konten unter Angabe der Rechnungsnummer.`;
+
+  const PRAXIS_2 = `Praxis für Ergotherapie   | Musterweg 8   | 90000 Musterstadt   Praxis   Musterweg 8
+Datum:   31.08.2026
+Rechnung-Nr: 202608 158
+LANR: 987654321
+Rechnungsnummer: 202608 158
+Gesamtbetrag: 670,32 €
+Bitte überweisen Sie den Gesamtbetrag unter Angabe der Rechnungsnummer
+innerhalb von fünf Tagen ab Rechnungsdatum auf eines meiner Konten.`;
+
+  it('Praxisrechnung 1: „Rechnung-Nr.“ ohne s, LANR ist keine Rechnungsnummer', () => {
+    expect(rechnungAuslesen(PRAXIS_1, kontext)).toEqual({
+      betrag: 50274,
+      datum: '2026-08-01',
+      faelligAm: '2026-08-23',
+      rechnungsnummer: '202608471',
+      leistungserbringer: 'Praxis für Ergotherapie Musterstadt',
+      art: 'krankheit',
+      personId: 'ich',
+    });
+  });
+
+  it('Praxisrechnung 2: Nummer mit Leerzeichen, Frist als Zahlwort', () => {
+    expect(rechnungAuslesen(PRAXIS_2, kontext)).toMatchObject({
+      betrag: 67032,
+      datum: '2026-08-31',
+      faelligAm: '2026-09-05',
+      rechnungsnummer: '202608158',
+    });
+  });
+
   describe('Rechnungsnummer', () => {
     const nr = (text: string) => rechnungAuslesen(text, kontext).rechnungsnummer;
 
@@ -154,6 +203,12 @@ describe('Rechnung auslesen', () => {
 
     it('nimmt nicht das Rechnungsdatum als Nummer', () => {
       expect(nr('Rechnungs-Nr. / Datum: 14.08.2026\nRechnungs-Nr.: 987654321')).toBe('987654321');
+    });
+
+    it('setzt mit Leerzeichen gedruckte Nummern zusammen, aber nicht mit Beträgen oder Daten', () => {
+      expect(nr('Rechnungsnummer: 202608 158')).toBe('202608158');
+      expect(nr('Rechnungsnr. 4711 12,50 €')).toBe('4711');
+      expect(nr('Rechnungsnummer 4711 vom 01.02.2026')).toBe('4711');
     });
 
     it('bevorzugt „Rechnungsnummer“ gegenüber schwächeren Bezeichnungen', () => {

@@ -75,10 +75,17 @@ export function erbringerVorschlaege(liste: ErbringerInfo[], eingabe: string, ma
 
 /** Allgemeine Wörter, die keinen Erbringer unterscheiden. */
 const ALLGEMEIN = new Set(
-  'dr med dent prof praxis gemeinschaftspraxis apotheke klinik klinikum krankenhaus hausarzt hausarztin hausarztpraxis zahnarzt zahnarztin zahnarztpraxis facharzt facharztin fur und der die das den am im an gmbh ggmbh mvz labor innere medizin allgemeinmedizin pflegedienst pflegeheim seniorenzentrum physiotherapie therapie herr frau'.split(' '),
+  (
+    'dr med dent prof praxis gemeinschaftspraxis apotheke klinik klinikum krankenhaus hausarzt hausarztin hausarztpraxis zahnarzt zahnarztin zahnarztpraxis facharzt facharztin fur und der die das den am im an gmbh ggmbh mvz labor innere medizin allgemeinmedizin pflegedienst pflegeheim seniorenzentrum physiotherapie therapie herr frau ' +
+    // Fachrichtungen unterscheiden keine Praxis (normalisiert, ohne Umlaute)
+    'psychotherapie ergotherapie logopadie krankengymnastik radiologie ' +
+    'orthopadie dermatologie gynakologie kardiologie urologie neurologie psychiatrie augenheilkunde augenarzt hno zahnheilkunde ' +
+    'kieferorthopadie chirurgie sozialstation tagespflege'
+  ).split(' '),
 );
 
-function kennwoerter(name: string): string[] {
+/** Kennzeichnende Wörter eines Namens (ohne allgemeine wie „Praxis“, „Dr.“, „für“). */
+export function kennwoerter(name: string): string[] {
   return normalisiere(name)
     .split(' ')
     .filter((w) => w.length >= 3 && !ALLGEMEIN.has(w));

@@ -1,4 +1,5 @@
 import type { Worker as OcrWorker } from 'tesseract.js';
+import { zeilenAusPdf, type TextTeil } from './pdfzeilen';
 // Liest den Text eines Belegs – vollständig im Browser, nichts verlässt das Gerät.
 // PDFs mit Textebene werden direkt gelesen; Fotos und gescannte PDFs per Texterkennung (OCR).
 
@@ -47,33 +48,6 @@ async function ocr(bild: Blob | HTMLCanvasElement, fortschritt?: Fortschritt): P
   fortschritt?.('Texterkennung läuft …');
   const { data } = await worker.recognize(bild);
   return data.text;
-}
-
-interface TextTeil {
-  str: string;
-  transform: number[];
-  hasEOL?: boolean;
-}
-
-/** Setzt die Textstücke einer PDF-Seite wieder zu Zeilen zusammen (nach Position). */
-function zeilenAusPdf(teile: TextTeil[]): string {
-  const zeilen: { y: number; teile: { x: number; s: string }[] }[] = [];
-  for (const t of teile) {
-    if (!t.str.trim()) continue;
-    const [, , , , x, y] = t.transform;
-    let zeile = zeilen.find((z) => Math.abs(z.y - y) < 3);
-    if (!zeile) zeilen.push((zeile = { y, teile: [] }));
-    zeile.teile.push({ x, s: t.str });
-  }
-  return zeilen
-    .sort((a, b) => b.y - a.y)
-    .map((z) =>
-      z.teile
-        .sort((a, b) => a.x - b.x)
-        .map((t) => t.s)
-        .join('   '),
-    )
-    .join('\n');
 }
 
 async function textAusPdf(datei: Blob, fortschritt?: Fortschritt): Promise<string> {
