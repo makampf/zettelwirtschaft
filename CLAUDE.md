@@ -18,8 +18,19 @@ Dieses Repository ist **öffentlich**. Die App verwaltet Gesundheitsdaten. Desha
    Git-Hook (`.githooks/pre-commit`, aktiviert durch `npm install`) und in CI – sie ersetzt die eigene Prüfung nicht.
 5. **Wird doch etwas gefunden:** sofort den Nutzer informieren und die Historie bereinigen (nach Rücksprache).
 
+## Commits, Versionen und Releases
+
+- **Commit-Nachrichten auf Englisch nach [Conventional Commits](https://www.conventionalcommits.org/)**:
+  `feat: …`, `fix: …`, `perf: …`, `refactor: …`, `docs: …`, `test: …`, `build: …`, `ci: …`, `chore: …`;
+  Breaking Changes mit `!` oder `BREAKING CHANGE:`. Der Hook `.githooks/commit-msg` prüft das Format.
+- Releases entstehen automatisch: Der Workflow `.github/workflows/release.yml` führt bei jedem Push auf `main`
+  semantic-release aus (Version in `package.json`, `CHANGELOG.md`, Git-Tag, GitHub-Release) und veröffentlicht
+  danach GitHub Pages und das Docker-Image. Version und `CHANGELOG.md` nie von Hand ändern.
+- Die Version erscheint im Footer der App (`__APP_VERSION__`, siehe `vite.config.ts`).
+
 ## Entwicklung
 
 - `npm install`, `npm run dev`, `npm test`, `npm run build`
 - Server-Tests brauchen Postgres: `TEST_DATABASE_URL=postgres://… npm test` (leert diese Datenbank)
-- Oberfläche und Commit-Nachrichten auf Deutsch
+- Oberfläche, Code-Kommentare und Doku auf Deutsch; Commit-Nachrichten auf Englisch
+- Lizenz: AGPL-3.0; Drittlizenzen in `NOTICE` und `dist/THIRD-PARTY-LICENSES.txt` (`scripts/drittlizenzen.mjs`)
