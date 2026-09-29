@@ -1,0 +1,161 @@
+name: Test, Release & Deploy
+
+# Bei jedem Push auf main: testen → Version nach Conventional Commits erhöhen (semantic-release)
+# → bei neuem Release GitHub Pages und das Docker-Image aus dem Release-Stand veröffentlichen.
+# Manuell gestartet (workflow_dispatch) wird immer veröffentlicht, auch ohne neues Release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://postgres:test@127.0.0.1:5432/test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Datenschutz-Prüfung (keine Belege, Fotos, Sicherungen)
+        run: bash scripts/datenschutz-pruefung.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Tag, Release-Commit (CHANGELOG, Version) und GitHub-Release
+      issues: write
+      pull-requests: write
+    outputs:
+      neu: ${{ steps.ergebnis.outputs.neu }}
+      version: ${{ steps.ergebnis.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx semantic-release
+      - name: Ergebnis
+        id: ergebnis
+        run: |
+          git fetch --tags --quiet origin main
+          git checkout --quiet FETCH_HEAD
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # Neues Release = semantic-release hat einen Release-Commit mit passendem Tag auf main gelegt
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ] && git tag --points-at HEAD | grep -qx "v$version"; then
+            echo "neu=true" >> "$GITHUB_OUTPUT"
+            echo "Neues Release: v$version"
+          else
+            echo "neu=false" >> "$GITHUB_OUTPUT"
+            echo "Kein neues Release (aktuelle Version $version)"
+          fi
+
+  pages:
+    needs: release
+    if: needs.release.outputs.neu == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main # enthält den Release-Commit mit der neuen Version
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # Voraussetzung: Settings → Pages → Source „GitHub Actions“
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+      - id: deployment
+        uses: actions/deploy-pages@v4
+
+  docker:
+    needs: release
+    if: needs.release.outputs.neu == 'true' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+      VERSION: ${{ needs.release.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Image bauen
+        run: docker build -t "$IMAGE:latest" -t "$IMAGE:$VERSION" .
+      - name: Rauchtest mit docker compose (App + Postgres)
+        run: |
+          cat > .env <<'ENV'
+          POSTGRES_PASSWORD=ci-db-passwort
+          APP_USER=familie
+          APP_PASSWORD=ci-app-passwort
+          ENV
+          docker compose up -d --no-build
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8080/api/health && break; sleep 2; done
+          echo "--- ohne Anmeldung (401 erwartet)"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/)" = 401
+          echo "--- App und Version"
+          curl -fs -u familie:ci-app-passwort http://127.0.0.1:8080/ | grep -q Zettelwirtschaft
+          curl -fs -u familie:ci-app-passwort http://127.0.0.1:8080/api/status | grep -q "\"version\":\"$VERSION\""
+          echo "--- speichern und laden"
+          curl -fs -u familie:ci-app-passwort -H 'X-Zettelwirtschaft: 1' -H 'Content-Type: application/json' \
+            -d '{"version":4,"speichern":{"personen":[{"id":"p1","name":"Test"}]}}' http://127.0.0.1:8080/api/aenderungen
+          curl -fs -u familie:ci-app-passwort http://127.0.0.1:8080/api/state | grep -q '"name":"Test"'
+          echo "--- Neustart: Daten bleiben erhalten"
+          docker compose restart app
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8080/api/health && break; sleep 2; done
+          curl -fs -u familie:ci-app-passwort http://127.0.0.1:8080/api/state | grep -q '"name":"Test"'
+          echo "Rauchtest ok"
+      - name: Logs bei Fehler
+        if: failure()
+        run: docker compose logs
+      - name: Aufräumen
+        if: always()
+        run: docker compose down -v
+      - name: Veröffentlichen (GitHub Container Registry)
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:$VERSION"
