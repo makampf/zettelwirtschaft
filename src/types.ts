@@ -61,7 +61,9 @@ export interface Person {
     selbstbehaltProzent: number;
     /** Höchstbetrag des Selbstbehalts pro Kalenderjahr in Cent. */
     selbstbehaltMax: number;
-    /** Beitragsrückerstattung pro leistungsfreiem Jahr in Cent (0 = keine). */
+    /** Tarif hat eine Beitragsrückerstattung (Betrag ggf. noch unbekannt). */
+    breAktiv: boolean;
+    /** Beitragsrückerstattung pro leistungsfreiem Jahr in Cent (0 = Betrag unbekannt). */
     bre: number;
     /** Selbstbehalt und BRE gelten gemeinsam für Kranken- und Pflegeversicherung. */
     mitPflege: boolean;
@@ -128,7 +130,7 @@ export interface Einreichung {
 }
 
 export interface AppState {
-  version: 3;
+  version: 4;
   personen: Person[];
   rechnungen: Rechnung[];
   einreichungen: Einreichung[];

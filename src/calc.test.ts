@@ -241,15 +241,38 @@ describe('Beitragsrückerstattung', () => {
 
   it('hält Vorsorge und Personen ohne BRE nicht zurück', () => {
     const { state, ich, oma } = setup();
+    const ohneBre = { ...oma, pkv: { ...oma.pkv, breAktiv: false } };
     expect(standardZurueckhalten(rechnung({ personId: ich.id, vorsorge: true }), ich, state)).toBe(false);
-    expect(standardZurueckhalten(rechnung({ personId: oma.id }), oma, state)).toBe(false);
-    expect(breCheck(state, oma, 2026)).toBeNull();
+    expect(standardZurueckhalten(rechnung({ personId: oma.id }), ohneBre, state)).toBe(false);
+    expect(breCheck(state, ohneBre, 2026)).toBeNull();
+  });
+
+  it('Tarif B: hält nur den Versicherungsanteil zurück, auch bei unbekanntem BRE-Betrag', () => {
+    const { state, oma } = setup();
+    expect(oma.pkv).toMatchObject({ tarif: 'Tarif B', breAktiv: true, bre: 0 });
+    const r = rechnung({ personId: oma.id, betrag: 10000 });
+    state.rechnungen.push(r);
+    expect(standardZurueckhalten(r, oma, state)).toBe(true);
+    const c = breCheck(state, oma, 2026)!;
+    expect(c.empfehlung).toBe('unbekannt');
+    expect(c.erstattungBeiEinreichung).toBe(3000); // 30 % Tarif B, Beihilfe zählt nicht
+    const h = hinweise(state, '2026-09-29').filter((x) => x.personenSeite);
+    expect(h.map((x) => x.personId)).toEqual([oma.id, state.personen[2].id]);
+  });
+
+  it('empfiehlt, sobald der BRE-Betrag bekannt ist', () => {
+    const { state, oma } = setup();
+    const mitBetrag = { ...oma, pkv: { ...oma.pkv, bre: 50000 } };
+    state.rechnungen.push(rechnung({ personId: oma.id, betrag: 100000 }));
+    const c = breCheck(state, mitBetrag, 2026)!;
+    expect(c.empfehlung).toBe('zurueckhalten'); // 300 € Erstattung < 500 € BRE
+    expect(c.vorteil).toBe(20000);
   });
 
   it('erinnert an die BRE-Entscheidung für das Vorjahr', () => {
     const { state, ich } = setup();
     state.rechnungen.push(rechnung({ personId: ich.id, datum: '2025-06-01', betrag: 200000, nichtEinreichen: ['pkv'], bezahltAm: '2025-06-02' }));
-    const h = hinweise(state, '2026-01-15');
+    const h = hinweise(state, '2026-01-15').filter((x) => !x.personenSeite);
     expect(h).toHaveLength(1);
     expect(h[0].text).toContain('BRE 2025: Einreichen lohnt sich');
   });
@@ -259,7 +282,7 @@ describe('Hinweise', () => {
   it('warnt vor ablaufender Beihilfefrist und überfälliger Zahlung', () => {
     const { state, oma } = setup();
     state.rechnungen.push(rechnung({ personId: oma.id, datum: '2025-10-15', faelligAm: '2026-09-01' }));
-    const h = hinweise(state, '2026-09-29');
+    const h = hinweise(state, '2026-09-29').filter((x) => !x.personenSeite);
     expect(h.map((x) => x.stufe)).toEqual(['kritisch', 'warnung']);
     expect(h[0].text).toContain('überfällig');
     expect(h[1].text).toContain('Beihilfe-Antragsfrist endet in 16');
@@ -318,12 +341,13 @@ describe('Migration', () => {
 
   it('bringt Version 1 auf den aktuellen Stand', () => {
     const s = migriere(v1());
-    expect(s.version).toBe(3);
+    expect(s.version).toBe(4);
     const [ich, oma, opa] = s.personen;
     expect(ich.beihilfe.berechtigt).toBe(false);
     expect(ich.pkv).toMatchObject({ name: 'Musterversicherung', tarif: 'Komforttarif', quote: 100, selbstbehaltProzent: 20, selbstbehaltMax: 40000, bre: 100000, mitPflege: true });
     expect(oma.beihilfe.berechtigt).toBe(true);
-    expect(oma.pkv).toMatchObject({ name: 'Musterversicherung', tarif: 'Tarif B', quote: 30, selbstbehaltProzent: 0, bre: 0, mitPflege: false });
+    expect(oma.pkv).toMatchObject({ name: 'Musterversicherung', tarif: 'Tarif B', quote: 30, selbstbehaltProzent: 0, breAktiv: true, bre: 0, mitPflege: false });
+    expect(ich.pkv.breAktiv).toBe(true);
     expect(oma.partnerId).toBe(opa.id);
     expect(opa.partnerId).toBe(oma.id);
     expect(s.rechnungen[0].vorsorge).toBe(false);
@@ -346,7 +370,7 @@ describe('Migration', () => {
     // Stand wie nach dem letzten Update: v2 ohne Tarif/Partner, Einreichungen mit personId
     const alt = JSON.parse(JSON.stringify(v2));
     alt.version = 2;
-    for (const p of alt.personen) { delete p.pkv.tarif; delete p.pkv.mitPflege; delete p.ppv.tarif; delete p.partnerId; p.pkv.name = ''; }
+    for (const p of alt.personen) { delete p.pkv.tarif; delete p.pkv.mitPflege; delete p.pkv.breAktiv; delete p.ppv.tarif; delete p.partnerId; p.pkv.name = ''; }
     for (const e of alt.einreichungen) { e.personId = e.personIds[0]; delete e.personIds; }
     const s = migriere(alt);
     expect(s.personen[0].pkv.mitPflege).toBe(true);

@@ -179,7 +179,7 @@ export function einreichbareRechnungen(state: AppState, personId: string, kt: Ko
 export interface BreCheck {
   personId: string;
   jahr: number;
-  /** BRE bei Leistungsfreiheit in Cent. */
+  /** BRE bei Leistungsfreiheit in Cent (0 = Betrag unbekannt). */
   bre: number;
   /** BRE-relevante Rechnungen des Jahres (ohne Vorsorge; Pflege nur bei gemeinsamem Tarif). */
   rechnungen: Rechnung[];
@@ -192,19 +192,20 @@ export interface BreCheck {
   offen: Rechnung[];
   /** Bewusst zurückgehalten. */
   zurueckgehalten: Rechnung[];
-  empfehlung: 'zurueckhalten' | 'einreichen';
+  /** Ohne bekannten BRE-Betrag ist keine Empfehlung möglich. */
+  empfehlung: 'zurueckhalten' | 'einreichen' | 'unbekannt';
   /** Finanzieller Vorteil der Empfehlung gegenüber der Alternative in Cent. */
   vorteil: number;
 }
 
 /** BRE-relevant: Rechnung ohne Vorsorge, die (anteilig) an die private Versicherung des Tarifs gehen würde. */
 export function breRelevant(r: Rechnung, person: Person): boolean {
-  return person.pkv.bre > 0 && tarifBetrifft(r, person) && quote(person, r.art, versicherungFuer(r.art)) > 0;
+  return person.pkv.breAktiv && tarifBetrifft(r, person) && quote(person, r.art, versicherungFuer(r.art)) > 0;
 }
 
 /** Vergleicht für ein Jahr: alles bei der Versicherung einreichen oder zurückhalten und BRE erhalten? */
 export function breCheck(ctx: Kontext, person: Person, jahr: number): BreCheck | null {
-  if (!person.pkv.bre) return null;
+  if (!person.pkv.breAktiv) return null;
   const liste = ctx.rechnungen.filter((r) => r.personId === person.id && r.datum.startsWith(`${jahr}-`) && breRelevant(r, person));
   const sb = selbstbehaltVerteilen(liste.filter((r) => selbstbehaltPflichtig(r, person)), person);
   let erstattung = 0;
@@ -219,6 +220,7 @@ export function breCheck(ctx: Kontext, person: Person, jahr: number): BreCheck |
     else if (r.nichtEinreichen.includes(kt)) zurueckgehalten.push(r);
     else offen.push(r);
   }
+  const unbekannt = !person.pkv.bre;
   const einreichen = erstattung > person.pkv.bre;
   return {
     personId: person.id,
@@ -230,8 +232,8 @@ export function breCheck(ctx: Kontext, person: Person, jahr: number): BreCheck |
     eingereicht,
     offen,
     zurueckgehalten,
-    empfehlung: einreichen ? 'einreichen' : 'zurueckhalten',
-    vorteil: Math.abs(erstattung - person.pkv.bre),
+    empfehlung: unbekannt ? 'unbekannt' : einreichen ? 'einreichen' : 'zurueckhalten',
+    vorteil: unbekannt ? 0 : Math.abs(erstattung - person.pkv.bre),
   };
 }
 
@@ -252,6 +254,8 @@ export interface Hinweis {
   text: string;
   rechnungId?: string;
   einreichungId?: string;
+  /** Hinweis betrifft die Personen-Einstellungen. */
+  personenSeite?: boolean;
 }
 
 export const WARNUNG_FRIST_TAGE = 60;
@@ -292,11 +296,15 @@ export function hinweise(state: AppState, stichtag = heute()): Hinweis[] {
   // Abgelaufene Jahre mit zurückgehaltenen Rechnungen: BRE-Entscheidung treffen
   const aktuellesJahr = Number(stichtag.slice(0, 4));
   for (const person of state.personen) {
+    if (person.pkv.breAktiv && !person.pkv.bre) {
+      liste.push({ stufe: 'info', personId: person.id, personenSeite: true, text: 'Betrag der Beitragsrückerstattung fehlt – bitte unter Personen eintragen' });
+    }
     const jahre = new Set(state.rechnungen.filter((r) => r.personId === person.id).map((r) => Number(r.datum.slice(0, 4))));
     for (const jahr of jahre) {
       if (jahr >= aktuellesJahr) continue;
       const c = breCheck(state, person, jahr);
       if (!c || c.zurueckgehalten.length === 0 || c.eingereicht.length > 0) continue;
+      if (c.empfehlung === 'unbekannt') continue;
       liste.push({
         stufe: c.empfehlung === 'einreichen' ? 'warnung' : 'info',
         personId: person.id,

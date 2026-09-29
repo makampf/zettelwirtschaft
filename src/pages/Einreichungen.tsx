@@ -309,7 +309,7 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
           {e.status === 'beschieden' && <small className="grau">Hinweis: Für diese Einreichung ist bereits ein Bescheid erfasst.</small>}
           {breVerlust.map((c) => c && (
             <div key={c.jahr} className="hinweis warnung">
-              ⚠️ Damit entfällt die Beitragsrückerstattung {c.jahr} ({euro(c.bre)}).
+              ⚠️ Damit entfällt die Beitragsrückerstattung {c.jahr} für {personById(c.personId)?.name} ({c.bre ? euro(c.bre) : 'Betrag unbekannt'}).
               {c.empfehlung === 'zurueckhalten' && ` Erwartete Erstattung aller Rechnungen ${c.jahr}: nur ${euro(c.erstattungBeiEinreichung)}.`}
             </div>
           ))}

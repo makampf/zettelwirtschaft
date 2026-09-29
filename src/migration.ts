@@ -8,11 +8,13 @@ type Beliebig = Record<string, any>; // eslint-disable-line @typescript-eslint/n
  * v1 → v2: Beihilfeberechtigung, Selbstbehalt, BRE, Vorsorge.
  * v2 → v3: Tarifnamen, gemeinsamer Selbstbehalt KV + PV, gemeinsam versicherte Personen,
  *          Einreichungen für mehrere Personen.
+ * v3 → v4: BRE auch mit (noch) unbekanntem Betrag; Tarif Tarif B hat eine BRE.
  */
 export function migriere(alt: unknown): AppState {
   let s = alt as Beliebig;
   if (s.version < 2) s = v1zuV2(s);
   if (s.version < 3) s = v2zuV3(s);
+  if (s.version < 4) s = v3zuV4(s);
   return s as AppState;
 }
 
@@ -29,6 +31,14 @@ function v1zuV2(s: Beliebig): Beliebig {
   });
   const rechnungen = s.rechnungen.map((r: Beliebig) => ({ ...r, vorsorge: r.vorsorge ?? false }));
   return { ...s, version: 2, personen, rechnungen };
+}
+
+function v3zuV4(s: Beliebig): Beliebig {
+  const personen = s.personen.map((p: Beliebig) => ({
+    ...p,
+    pkv: { ...p.pkv, breAktiv: p.pkv.breAktiv ?? (p.pkv.bre > 0 || p.pkv.tarif === 'Tarif B') },
+  }));
+  return { ...s, version: 4, personen };
 }
 
 function v2zuV3(s: Beliebig): Beliebig {

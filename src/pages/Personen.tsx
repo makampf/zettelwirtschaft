@@ -39,7 +39,7 @@ export default function Personen() {
                 {p.pkv.selbstbehaltProzent > 0 && (
                   <><br />Selbstbehalt {p.pkv.selbstbehaltProzent} %, max. {euro(p.pkv.selbstbehaltMax)}/Jahr{p.pkv.mitPflege && ' (KV + PV gemeinsam)'}</>
                 )}
-                {p.pkv.bre > 0 && <><br />Beitragsrückerstattung ca. {euro(p.pkv.bre)}/Jahr</>}
+                {p.pkv.breAktiv && <><br />Beitragsrückerstattung {p.pkv.bre ? `ca. ${euro(p.pkv.bre)}/Jahr` : '– Betrag noch eintragen'}</>}
               </dd>
               <dt>Pflegeversicherung</dt>
               <dd>{p.ppv.name || <span className="grau">nicht angegeben</span>}{p.ppv.tarif && <>, Tarif {p.ppv.tarif}</>} · {p.ppv.quote} %{p.ppv.nummer && <><br />Nr. {p.ppv.nummer}</>}</dd>
@@ -154,7 +154,7 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
                 <BetragFeld wert={p.pkv.selbstbehaltMax} onChange={(c) => pkv({ selbstbehaltMax: c ?? 0 })} />
               </Feld>
             )}
-            {(p.pkv.selbstbehaltProzent > 0 || p.pkv.bre > 0) && (
+            {(p.pkv.selbstbehaltProzent > 0 || p.pkv.breAktiv) && (
               <Feld label="Gilt auch für Pflege" hinweis="Pflegerechnungen zählen zum selben Selbstbehalt und zur Beitragsrückerstattung">
                 <label className="checkbox">
                   <input type="checkbox" checked={p.pkv.mitPflege} onChange={(e) => pkv({ mitPflege: e.target.checked })} />
@@ -162,9 +162,17 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
                 </label>
               </Feld>
             )}
-            <Feld label="Beitragsrückerstattung pro Jahr" hinweis="Bei Leistungsfreiheit (außer Vorsorge). Leer = keine">
-              <BetragFeld wert={p.pkv.bre || undefined} onChange={(c) => pkv({ bre: c ?? 0 })} />
+            <Feld label="Beitragsrückerstattung" hinweis="Bei Leistungsfreiheit (außer Vorsorge)">
+              <label className="checkbox">
+                <input type="checkbox" checked={p.pkv.breAktiv} onChange={(e) => pkv({ breAktiv: e.target.checked })} />
+                Tarif hat Beitragsrückerstattung
+              </label>
             </Feld>
+            {p.pkv.breAktiv && (
+              <Feld label="Rückerstattung pro Jahr" hinweis="Leer lassen, wenn noch unbekannt">
+                <BetragFeld wert={p.pkv.bre || undefined} onChange={(c) => pkv({ bre: c ?? 0 })} />
+              </Feld>
+            )}
           </div>
         </fieldset>
 

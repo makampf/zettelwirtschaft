@@ -27,7 +27,13 @@ export default function Uebersicht() {
             <button
               key={i}
               className={`hinweis ${h.stufe}`}
-              onClick={() => (h.rechnungId ? nav.gehe('rechnungen', { rechnungId: h.rechnungId }) : nav.gehe('einreichungen', { einreichungId: h.einreichungId }))}
+              onClick={() =>
+                h.personenSeite
+                  ? nav.gehe('personen')
+                  : h.rechnungId
+                    ? nav.gehe('rechnungen', { rechnungId: h.rechnungId })
+                    : nav.gehe('einreichungen', { einreichungId: h.einreichungId })
+              }
             >
               <span aria-hidden>{h.stufe === 'kritisch' ? '⛔' : h.stufe === 'warnung' ? '⚠️' : 'ℹ️'}</span>
               <PersonChip person={personById(h.personId)} />
@@ -167,12 +173,14 @@ function BreBox({ check: c, laufend }: { check: BreCheck; laufend: boolean }) {
       <ul className="kt-liste">
         <li><span>Rechnungen ohne Vorsorge</span><span>{c.rechnungen.length}× · {euro(c.betrag)}</span></li>
         <li><span>Erstattung bei Einreichung</span><span>{euro(c.erstattungBeiEinreichung)}</span></li>
-        <li><span>Beitragsrückerstattung</span><span>{euro(c.bre)}</span></li>
+        <li><span>Beitragsrückerstattung</span><span>{c.bre ? euro(c.bre) : 'Betrag unbekannt'}</span></li>
       </ul>
       <p className="empfehlung">
-        {c.empfehlung === 'zurueckhalten'
-          ? <>Empfehlung: <strong>zurückhalten</strong> – {euro(c.vorteil)} mehr als bei Einreichung.</>
-          : <>Empfehlung: <strong>einreichen</strong> – {euro(c.vorteil)} mehr als die Rückerstattung.</>}
+        {c.empfehlung === 'unbekannt'
+          ? <>Keine Empfehlung möglich – den BRE-Betrag unter <em>Personen</em> eintragen. Bis dahin bleiben die Rechnungen bei der Versicherung zurückgehalten.</>
+          : c.empfehlung === 'zurueckhalten'
+            ? <>Empfehlung: <strong>zurückhalten</strong> – {euro(c.vorteil)} mehr als bei Einreichung.</>
+            : <>Empfehlung: <strong>einreichen</strong> – {euro(c.vorteil)} mehr als die Rückerstattung.</>}
       </p>
       {laufend && c.empfehlung === 'zurueckhalten' && c.rechnungen.length > 0 && (
         <small className="grau">Das Jahr läuft noch – mit weiteren Rechnungen kann sich die Empfehlung ändern. Zurückgehaltene Rechnungen können nach Jahresende noch eingereicht werden.</small>
@@ -184,7 +192,7 @@ function BreBox({ check: c, laufend }: { check: BreCheck; laufend: boolean }) {
         {c.empfehlung === 'einreichen' && c.zurueckgehalten.length > 0 && (
           <button className="klein primaer" onClick={() => setzen(c.zurueckgehalten, false)}>{c.zurueckgehalten.length} Rechnung(en) zur Einreichung freigeben</button>
         )}
-        {c.empfehlung === 'zurueckhalten' && c.zurueckgehalten.length > 0 && (
+        {c.empfehlung !== 'einreichen' && c.zurueckgehalten.length > 0 && (
           <button className="klein" onClick={() => setzen(c.zurueckgehalten, false)}>Trotzdem freigeben</button>
         )}
       </div>
