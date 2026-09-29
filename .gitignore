@@ -3,3 +3,18 @@ dist
 *.local
 server/dist
 .env
+
+# Datenschutz: echte Belege, Fotos, Sicherungen und Dumps nie ins Repository (siehe CLAUDE.md)
+*.pdf
+*.jpg
+*.jpeg
+*.png
+*.heic
+*.heif
+*.webp
+*.tif
+*.tiff
+*.sql
+*.dump
+*sicherung*.json
+belege/

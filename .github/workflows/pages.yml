@@ -35,6 +35,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Datenschutz-Prüfung (keine Belege, Fotos, Sicherungen)
+        run: bash scripts/datenschutz-pruefung.sh
       - run: npm ci
       - run: npm test
       - run: npm run build

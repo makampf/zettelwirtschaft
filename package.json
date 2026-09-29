@@ -11,7 +11,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p server/tsconfig.json --noEmit",
     "start": "node server/dist/index.js",
-    "server:dev": "tsx watch server/src/index.ts"
+    "server:dev": "tsx watch server/src/index.ts",
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "datenschutz": "bash scripts/datenschutz-pruefung.sh"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.3",
