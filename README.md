@@ -38,6 +38,14 @@ npm test         # Unit-Tests der Berechnungslogik
 Die Daten hängen am Browser (und bei `file://` am Speicherort) – bitte immer denselben Browser verwenden und regelmäßig
 unter **Daten → Sicherung herunterladen** sichern.
 
+## Online-Version
+
+Die App wird bei jedem Push automatisch über GitHub Pages veröffentlicht:
+**https://makampf.github.io/claudetest/**
+
+Veröffentlicht wird nur das Programm – die eingegebenen Daten bleiben weiterhin ausschließlich im Browser des jeweiligen Geräts.
+Daten zwischen Geräten (z. B. PC und Handy) lassen sich über **Daten → Sicherung** übertragen.
+
 ## Hinweise
 
 - Bemessungssätze (üblich: 50 % aktiv, 70 % Versorgungsempfänger) und Antragsfristen unterscheiden sich zwischen Bund und Ländern –
