@@ -19,6 +19,7 @@ const FELD_NAME: Record<ErkanntesFeld, string> = {
   dueDate: 'Zahlungsziel',
   invoiceNumber: 'Rechnungsnummer',
   provider: 'Leistungserbringer',
+  billingOffice: 'Verrechnungsstelle',
   kind: 'Art',
   preventive: 'Vorsorge',
   personId: 'Person',
@@ -60,7 +61,7 @@ export default function Invoices() {
       .filter((r) => !nav.personFilter || r.personId === nav.personFilter)
       .filter((r) => !art || r.kind === art)
       .filter((r) => !jahr || r.date.startsWith(jahr))
-      .filter((r) => !s || [r.provider, r.invoiceNumber, r.description, r.note].some((t) => t.toLowerCase().includes(s)))
+      .filter((r) => !s || [r.provider, r.billingOffice ?? '', r.invoiceNumber, r.description, r.note].some((t) => t.toLowerCase().includes(s)))
       .map((r) => ({ r, person: personById(r.personId)! }))
       .filter((z) => z.person)
       .map((z) => ({ ...z, u: rechnungUebersicht(z.r, z.person, state) }))
@@ -143,7 +144,7 @@ export default function Invoices() {
                   <td><PersonChip person={person} /></td>
                   <td>
                     <div>{r.provider || '–'}{r.fileIds.length > 0 && ' 📎'}{r.preventive && <span className="badge tag">Vorsorge</span>}</div>
-                    {(r.description || r.invoiceNumber) && <small className="grau">{[r.invoiceNumber && `Nr. ${r.invoiceNumber}`, r.description].filter(Boolean).join(' · ')}</small>}
+                    {(r.description || r.invoiceNumber || r.billingOffice) && <small className="grau">{[r.billingOffice && `über ${r.billingOffice}`, r.invoiceNumber && `Nr. ${r.invoiceNumber}`, r.description].filter(Boolean).join(' · ')}</small>}
                   </td>
                   <td>{ART_NAME[r.kind]}</td>
                   <td className="zahl">{euro(r.amount)}</td>
@@ -257,7 +258,7 @@ export function RechnungFormular({
     try {
       const text = await textAusDatei(datei, (t) => setLeseStatus({ art: 'laeuft', text: t }));
       setLeseText(text);
-      const e = rechnungAuslesen(text, { personen: state.people, bekannteErbringer: erbringer, heute: heute() });
+      const e = rechnungAuslesen(text, { personen: state.people, bekannteErbringer: erbringer, bekannteVerrechnungsstellen: verrechnungsstellen, heute: heute() });
       const frei = (k: keyof Invoice, leer: boolean) => !beruehrt.current.has(k) && (!rechnung || leer);
       const uebernommen = new Set<ErkanntesFeld>();
       const teil: Partial<Invoice> = {};
@@ -269,6 +270,7 @@ export function RechnungFormular({
       if (e.dueDate && frei('dueDate', !r.dueDate)) (teil.dueDate = e.dueDate), uebernommen.add('dueDate');
       if (e.invoiceNumber && frei('invoiceNumber', !r.invoiceNumber)) (teil.invoiceNumber = e.invoiceNumber), uebernommen.add('invoiceNumber');
       if (e.provider && frei('provider', !r.provider)) (teil.provider = e.provider), uebernommen.add('provider');
+      if (e.billingOffice && frei('billingOffice', !r.billingOffice)) (teil.billingOffice = e.billingOffice), uebernommen.add('billingOffice');
       if (e.kind && e.kind !== r.kind && frei('kind', false)) (teil.kind = e.kind), uebernommen.add('kind');
       if (e.preventive && frei('preventive', false)) (teil.preventive = true), uebernommen.add('preventive');
       if (e.personId && e.personId !== r.personId && frei('personId', false)) (teil.personId = e.personId), uebernommen.add('personId');
@@ -317,6 +319,10 @@ export function RechnungFormular({
   // Leistungserbringer-Vorschläge aus bisherigen Rechnungen (ohne die gerade bearbeitete)
   const erbringerInfos = useMemo(() => erbringerListe(state.invoices.filter((x) => x.id !== r.id)), [state.invoices, r.id]);
   const erbringer = useMemo(() => erbringerInfos.map((e) => e.name), [erbringerInfos]);
+  const verrechnungsstellen = useMemo(
+    () => [...new Set(state.invoices.map((x) => x.billingOffice?.trim()).filter((x): x is string => !!x))].sort(),
+    [state.invoices],
+  );
   const [vorlageHinweis, setVorlageHinweis] = useState<string | null>(null);
 
   /** Bekannter Erbringer gewählt: Art und (eindeutige) Person wie bei den bisherigen Rechnungen übernehmen. */
@@ -326,6 +332,10 @@ export function RechnungFormular({
     if (!beruehrt.current.has('kind') && !erkannt.has('kind') && info.art !== r.kind) {
       teil.kind = info.art;
       uebernommen.push(ART_NAME[info.art]);
+    }
+    if (info.billingOffice && !r.billingOffice && !beruehrt.current.has('billingOffice')) {
+      teil.billingOffice = info.billingOffice;
+      uebernommen.push(`über ${info.billingOffice}`);
     }
     if (!rechnung && info.personId && info.personId !== r.personId && !beruehrt.current.has('personId') && !erkannt.has('personId')) {
       teil.personId = info.personId;
@@ -415,6 +425,17 @@ export function RechnungFormular({
               pflicht
             />
             {vorlageHinweis && <small className="ok">{vorlageHinweis}</small>}
+          </Feld>
+          <Feld label="Abgerechnet über" hinweis="Nur bei Verrechnungsstellen – sonst leer lassen" erkannt={erkannt.has('billingOffice')}>
+            <input
+              list="verrechnungsstellen"
+              value={r.billingOffice ?? ''}
+              placeholder="z. B. Verrechnungsstelle"
+              onChange={(e) => set('billingOffice', e.target.value || undefined)}
+            />
+            <datalist id="verrechnungsstellen">
+              {verrechnungsstellen.map((v) => <option key={v} value={v} />)}
+            </datalist>
           </Feld>
           <Feld label="Rechnungsnummer" erkannt={erkannt.has('invoiceNumber')}>
             <input value={r.invoiceNumber} onChange={(e) => set('invoiceNumber', e.target.value)} />

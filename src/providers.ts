@@ -10,6 +10,8 @@ export interface ErbringerInfo {
   art: ServiceKind;
   /** Person, falls alle Rechnungen dieses Erbringers dieselbe Person betreffen. */
   personId?: string;
+  /** Verrechnungsstelle der jüngsten Rechnung, falls über eine abgerechnet wurde. */
+  billingOffice?: string;
 }
 
 /** Vereinheitlicht Text für Vergleiche: klein, ohne Akzente, ß → ss, Satzzeichen weg. */
@@ -25,7 +27,7 @@ export function normalisiere(s: string): string {
 
 /** Alle bisherigen Leistungserbringer, zuletzt verwendete zuerst. */
 export function erbringerListe(rechnungen: Invoice[]): ErbringerInfo[] {
-  const map = new Map<string, { name: string; anzahl: number; zuletzt: string; arten: Record<ServiceKind, number>; personen: Set<string> }>();
+  const map = new Map<string, { name: string; anzahl: number; zuletzt: string; arten: Record<ServiceKind, number>; personen: Set<string>; billingOffice?: string }>();
   for (const r of rechnungen) {
     const name = r.provider.trim();
     if (!name) continue;
@@ -39,6 +41,7 @@ export function erbringerListe(rechnungen: Invoice[]): ErbringerInfo[] {
     if (r.date >= e.zuletzt) {
       e.zuletzt = r.date;
       e.name = name;
+      e.billingOffice = r.billingOffice?.trim() || undefined;
     }
   }
   return [...map.values()]
@@ -48,6 +51,7 @@ export function erbringerListe(rechnungen: Invoice[]): ErbringerInfo[] {
       zuletzt: e.zuletzt,
       art: (e.arten.care > e.arten.illness ? 'care' : 'illness') as ServiceKind,
       personId: e.personen.size === 1 ? [...e.personen][0] : undefined,
+      billingOffice: e.billingOffice,
     }))
     .sort((a, b) => b.zuletzt.localeCompare(a.zuletzt) || b.anzahl - a.anzahl || a.name.localeCompare(b.name));
 }
@@ -80,7 +84,9 @@ const ALLGEMEIN = new Set(
     // Fachrichtungen unterscheiden keine Praxis (normalisiert, ohne Umlaute)
     'psychotherapie ergotherapie logopadie krankengymnastik radiologie ' +
     'orthopadie dermatologie gynakologie kardiologie urologie neurologie psychiatrie augenheilkunde augenarzt hno zahnheilkunde ' +
-    'kieferorthopadie chirurgie sozialstation tagespflege'
+    'kieferorthopadie chirurgie sozialstation tagespflege ' +
+    // Zusätze von Gemeinschaftspraxen und Verrechnungsstellen
+    'partner partnerschaft ubag bag facharzte arzte verrechnungsstelle abrechnungsstelle pvs'
   ).split(' '),
 );
 

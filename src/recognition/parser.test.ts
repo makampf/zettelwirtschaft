@@ -232,4 +232,58 @@ innerhalb von fünf Tagen ab Rechnungsdatum auf eines meiner Konten.`;
     expect(e.amount).toBe(3000);
     expect(e.date).toBe('2026-06-20');
   });
+  describe('Verrechnungsstelle', () => {
+    // Frei erfundener Beleg: Verrechnungsstelle rechnet im Auftrag einer Praxis ab, rechte Spalte in die Adresse gemischt
+    const VST = `
+Muster & Partner
+Verrechnungsstelle
+Muster & Partner - Musterplatz 1 - 90000 Musterstadt   Liquidation vom 14.09.2026 für
+Herrn   Praxis Dr. Beispiel u. Partner Fachärzte
+Max Mustermann   Dr. med. Paul Beispiel
+Musterweg 1   Facharzt für Allgemeinmedizin
+90000 Musterstadt
+Rechnungsnummer: 2026-4711
+Bitte wenden Sie sich bei allen Fragen an die Muster & Partner Verrechnungsstelle!
+Patient Mustermann, Max geb. 01.01.1980
+Datum Ziffer Bezeichnung Faktor Betrag
+02.08.26 1 Beratung 2,3 10,72
+Rechnungsbetrag: 10,72 €
+Die Rechnung ist sofort zur Zahlung fällig, spätestens jedoch am: 14.10.2026
+Bitte gleichen Sie die Rechnung binnen 30 Tagen aus.
+Muster & Partner Verrechnungsstelle GmbH - Musterplatz 1 - 90000 Musterstadt
+`;
+    const lies = (bekannteErbringer: string[] = [], bekannteVerrechnungsstellen: string[] = []) =>
+      rechnungAuslesen(VST, { ...kontext, bekannteErbringer, bekannteVerrechnungsstellen });
+
+    it('erkennt Verrechnungsstelle, behandelnden Arzt, Liquidationsdatum und Zahlungsziel', () => {
+      expect(lies()).toMatchObject({
+        billingOffice: 'Muster & Partner Verrechnungsstelle',
+        provider: 'Dr. med. Paul Beispiel',
+        date: '2026-09-14',
+        dueDate: '2026-10-14',
+        amount: 1072,
+        invoiceNumber: '2026-4711',
+        personId: 'ich',
+      });
+    });
+
+    it('nimmt nicht die als Erbringer bekannte Verrechnungsstelle, sondern den Arzt', () => {
+      expect(lies(['Muster & Partner']).provider).toBe('Dr. med. Paul Beispiel');
+      expect(lies(['Muster & Partner Verrechnungsstelle']).provider).toBe('Dr. med. Paul Beispiel');
+    });
+
+    it('erkennt einen einmal korrigierten Erbringer beim nächsten Beleg wieder', () => {
+      expect(lies(['Muster & Partner', 'Praxis Dr. Beispiel']).provider).toBe('Praxis Dr. Beispiel');
+      // auch mit eigenen Zusätzen, die nicht im Beleg stehen
+      expect(lies(['Muster & Partner', 'Praxis Beispiel am Park']).provider).toBe('Praxis Beispiel am Park');
+    });
+
+    it('übernimmt die Schreibweise einer bekannten Verrechnungsstelle', () => {
+      expect(lies([], ['Muster und Partner']).billingOffice).toBe('Muster und Partner');
+    });
+
+    it('setzt ohne Verrechnungsstelle kein billingOffice', () => {
+      expect(rechnungAuslesen(GOAE, kontext).billingOffice).toBeUndefined();
+    });
+  });
 });

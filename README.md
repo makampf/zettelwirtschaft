@@ -25,6 +25,9 @@ oder, in der GitHub-Pages- bzw. Datei-Version, **nur lokal im Browser** (Indexed
   - erwartete Erstattung wird aus den Quoten berechnet und kann pro Rechnung überschrieben werden (z. B. bei Pflege-Höchstbeträgen)
   - **Leistungserbringer-Vorschläge:** beim Antippen die zuletzt genutzten, beim Tippen gefiltert (auch ohne Umlaute/
     Groß-/Kleinschreibung). Die Auswahl übernimmt Art und – falls eindeutig – die Person der bisherigen Rechnungen.
+  - **Verrechnungsstellen:** Rechnet eine Verrechnungsstelle im Auftrag eines Arztes ab, wird sie als „Abgerechnet über“
+    erkannt und der behandelnde Arzt als Leistungserbringer übernommen. Einmal umbenannte Erbringer (z. B. „Praxis Dr. Beispiel“)
+    werden beim nächsten Beleg wiedererkannt.
   - **Vorsorgeuntersuchungen** markieren: ohne Selbstbehalt und unschädlich für die Beitragsrückerstattung
   - Selbstbehalt wird je Kalenderjahr in Reihenfolge der Rechnungsdaten angerechnet, bis der Höchstbetrag erreicht ist
 - **Beitragsrückerstattung (BRE)**: Neue Rechnungen werden bei der PKV zunächst zurückgehalten. Die Übersicht vergleicht je Jahr

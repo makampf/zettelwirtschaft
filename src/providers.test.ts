@@ -49,6 +49,15 @@ describe('Leistungserbringer', () => {
     expect(info['hausarzt dr. weiß'].personId).toBeUndefined(); // Oma und Opa
   });
 
+  it('merkt sich die Verrechnungsstelle der jüngsten Rechnung', () => {
+    const [info] = erbringerListe([
+      { ...r('Praxis Dr. Beispiel', '2026-01-10'), billingOffice: 'Muster Verrechnungsstelle' },
+      r('Praxis Dr. Beispiel', '2025-05-01'),
+    ]);
+    expect(info.billingOffice).toBe('Muster Verrechnungsstelle');
+    expect(erbringerListe(rechnungen)[0].billingOffice).toBeUndefined();
+  });
+
   it('schlägt ohne Eingabe die zuletzt genutzten vor', () => {
     expect(erbringerVorschlaege(liste, '', 2).map((e) => e.name)).toEqual(['Apotheke am Markt', 'Seniorenzentrum Sonnenhof']);
   });

@@ -10,6 +10,8 @@ export interface Recognition {
   dueDate?: string;
   invoiceNumber?: string;
   provider?: string;
+  /** Verrechnungsstelle, die im Auftrag des Leistungserbringers abrechnet. */
+  billingOffice?: string;
   kind?: ServiceKind;
   preventive?: boolean;
   personId?: string;
@@ -19,6 +21,8 @@ export interface ParserKontext {
   personen: Pick<Person, 'id' | 'invoiceNames'>[];
   /** Bereits verwendete Leistungserbringer – werden bevorzugt wiedererkannt. */
   bekannteErbringer: string[];
+  /** Bereits verwendete Verrechnungsstellen – deren Schreibweise wird übernommen. */
+  bekannteVerrechnungsstellen?: string[];
   /** Heutiges Datum (ISO) für Plausibilitätsprüfungen. */
   heute: string;
 }
@@ -114,12 +118,14 @@ function datumNachSchluessel(zeilen: string[], schluessel: RegExp): string | und
 }
 
 const KEIN_RECHNUNGSDATUM = /geb(\.|urt)|fällig|zahlbar|bis\s+zum|zahlungsziel|leistungszeitraum|behandlung|aufnahme|entlassung/i;
+/** Tabellenkopf der Leistungsaufstellung („Datum  Ziffer  Bezeichnung …“) – die Daten darunter sind Behandlungstage. */
+const TABELLENKOPF = /^datum\s+(ziffer|nr|gop|go[äa]|bezeichnung|leistung|anz)/i;
 
 function findeDatum(zeilen: string[], heute: string): string | undefined {
-  const perSchluessel = datumNachSchluessel(zeilen, /rechnungsdatum|datum\s+der\s+rechnung|rechnung\s+vom|ausgestellt\s+am|belegdatum|rg\.?-?datum|re\.?-?datum/i);
+  const perSchluessel = datumNachSchluessel(zeilen, /rechnungsdatum|datum\s+der\s+rechnung|rechnung\s+vom|liquidation\s+vom|ausgestellt\s+am|belegdatum|rg\.?-?datum|re\.?-?datum/i);
   if (perSchluessel) return perSchluessel;
   const datumszeile = datumNachSchluessel(
-    zeilen.map((z) => (KEIN_RECHNUNGSDATUM.test(z) ? '' : z)),
+    zeilen.map((z) => (KEIN_RECHNUNGSDATUM.test(z) || TABELLENKOPF.test(z) ? '' : z)),
     /(^|\s)datum\s*:?/i,
   );
   if (datumszeile) return datumszeile;
@@ -137,7 +143,7 @@ const ZAHLWOERTER: Record<string, number> = {
 };
 
 function findeFaellig(zeilen: string[], datum: string | undefined): string | undefined {
-  const d = datumNachSchluessel(zeilen, /zahlbar\s+bis|fällig\s+(am|bis)|zahlungsziel|spätestens\s+(am|bis)|bis\s+zum|zahlen\s+sie\s+bis|bitte\s+bis|fälligkeit/i);
+  const d = datumNachSchluessel(zeilen, /zahlbar\s+bis|fällig\s+(am|bis)|zahlungsziel|spätestens(?:\s+jedoch)?\s+(am|bis)|bis\s+zum|zahlen\s+sie\s+bis|bitte\s+bis|fälligkeit/i);
   if (d) return d;
   const text = zeilen.join(' ');
   const frist = /(?:innerhalb|binnen)\s+(?:von\s+)?(\d{1,3}|[a-zäöüß]+)\s+tagen/i.exec(text);
@@ -208,7 +214,59 @@ function findeRechnungsnummer(zeilen: string[]): string | undefined {
 const ERBRINGER = /\b(dr\.?\s*(?:med\.?\s*)?(?:dent\.?\s*)?[a-zäöüß]|praxis|gemeinschaftspraxis|apotheke|klinik|klinikum|krankenhaus|mvz|zahnarzt|zahnärzt|labor|pflegedienst|pflegeheim|seniorenheim|seniorenzentrum|seniorenresidenz|altenheim|sozialstation|diakonie|caritas|physiotherapie|krankengymnastik|ergotherapie|logopädie|optik|augenoptik|sanitätshaus|hörgeräte|orthopädie|radiologie|facharzt|heilpraktiker|tagespflege)/i;
 const KEIN_ERBRINGER = /patient|versicherte|herrn?\b|frau\b|bewohner|leistungsempfänger|rechnungsempfänger|bankverbindung|iban|bic|steuer|telefon|tel\.|fax|e-?mail|www\.|seite\s+\d/i;
 
-function findeErbringer(zeilen: string[], text: string, bekannte: string[]): string | undefined {
+// ---------------------------------------------------------------------------
+// Verrechnungsstellen: rechnen im Auftrag eines Arztes ab, ihr Name steht im Briefkopf
+
+const VERRECHNUNG = /verrechnungsstelle|abrechnungsstelle|abrechnungszentrum|abrechnungsgesellschaft|privatärztliche\s+verrechnung|\bpvs\b/i;
+/** Hinweise auf den eigentlichen Leistungserbringer im Beleg einer Verrechnungsstelle. */
+const AUFTRAGGEBER = /liquidation\s+(?:vom\s+\S+\s+)?für|im\s+auftrag\s+(?:von|des|der)|abrechnung\s+für|behandelnde[rn]?\s+(?:arzt|ärztin)|leistungserbringer\s*:/i;
+const ARZTNAME = /\bDr\.?\s*(?:med\.?\s*)?(?:dent\.?\s*)?(?:univ\.?\s*)?(?:[A-ZÄÖÜ][a-zäöüß]+-?)+(?:\s+(?:[A-ZÄÖÜ][a-zäöüß]+-?)+)?/g;
+const TEILE = /\s[·|•–-]\s|\s{3,}/;
+
+/** Name der Verrechnungsstelle, wenn der Beleg von einer stammt. */
+function findeVerrechnungsstelle(zeilen: string[]): string | undefined {
+  for (const [i, z] of zeilen.entries()) {
+    const teil = z.split(TEILE)[0].replace(/[\s!.:,]+$/, '').trim();
+    if (!VERRECHNUNG.test(teil) || /\b(bitte|sie|ihr|wir|uns)\b/i.test(teil)) continue;
+    // Stichwort allein in der Zeile: Name steht in der Zeile darüber („Muster & Partner“ / „Verrechnungsstelle“)
+    if (!kennwoerter(teil).length && i > 0) {
+      const davor = zeilen[i - 1].split(TEILE)[0].trim();
+      if (davor && !VERRECHNUNG.test(davor) && davor.length <= 50) return `${davor} ${teil}`;
+    }
+    if (teil.length >= 4 && teil.length <= 70) return teil;
+  }
+  return undefined;
+}
+
+/** Behandelnder Arzt im Beleg einer Verrechnungsstelle (nicht die Verrechnungsstelle selbst). */
+function findeAuftraggeber(zeilen: string[], stelle: string): string | undefined {
+  const fremd = new Set(kennwoerter(stelle));
+  const namen = (z: string) =>
+    [...z.matchAll(ARZTNAME)]
+      .map((m) => m[0].trim())
+      .filter((n) => kennwoerter(n).length && !kennwoerter(n).some((w) => fremd.has(w)));
+  // Bevorzugt hinter einem Hinweis wie „Liquidation für“, „im Auftrag von“ (Name oft in den Folgezeilen)
+  const i = zeilen.findIndex((z) => AUFTRAGGEBER.test(z));
+  const bereiche = i >= 0 ? [zeilen.slice(i, i + 5), zeilen.slice(0, 25)] : [zeilen.slice(0, 25)];
+  for (const b of bereiche) {
+    const liste = b.filter((z) => !/patient|versicherte|geb(\.|urt)/i.test(z)).flatMap(namen);
+    // Ausführlichster Name („Dr. med. Erika Beispiel“ statt „Dr. Beispiel“)
+    if (liste.length) return liste.sort((a, b) => b.split(/\s+/).length - a.split(/\s+/).length || b.length - a.length)[0];
+  }
+  return undefined;
+}
+
+/** Passt ein Name nur zur Verrechnungsstelle (alle kennzeichnenden Wörter stammen aus deren Namen)? */
+function nurVerrechnungsstelle(name: string, stelle: string | undefined): boolean {
+  if (!stelle) return false;
+  const eigen = new Set(kennwoerter(stelle));
+  const kenn = kennwoerter(name);
+  return VERRECHNUNG.test(name) || (kenn.length > 0 && kenn.every((w) => eigen.has(w)));
+}
+
+function findeErbringer(zeilen: string[], text: string, bekannteAlle: string[], stelle?: string): string | undefined {
+  // Bekannte Namen, die nur die Verrechnungsstelle bezeichnen, zählen nicht als Leistungserbringer
+  const bekannte = bekannteAlle.filter((b) => !nurVerrechnungsstelle(b, stelle));
   // 1. Bereits bekannte Leistungserbringer wiedererkennen (längster Treffer)
   const klein = text.toLowerCase().replace(/\s+/g, ' ');
   const bekannt = bekannte.filter((b) => b.length >= 4 && klein.includes(b.toLowerCase().replace(/\s+/g, ' '))).sort((a, b) => b.length - a.length);
@@ -216,11 +274,19 @@ function findeErbringer(zeilen: string[], text: string, bekannte: string[]): str
   // 1b. Unscharf: kennzeichnende Wörter (z. B. Nachname) im Briefkopf
   const aehnlich = bekannterErbringerImText(zeilen.slice(0, 25).join('\n'), bekannte);
   if (aehnlich) return aehnlich;
+  // 1c. Beleg einer Verrechnungsstelle: behandelnden Arzt suchen
+  if (stelle) {
+    const arzt = findeAuftraggeber(zeilen, stelle);
+    // Bekannter Erbringer mit demselben Nachnamen (z. B. selbst umbenannt in „Praxis Dr. Beispiel“) hat Vorrang
+    const nachname = arzt && kennwoerter(arzt).pop();
+    const gleich = nachname && bekannte.find((b) => kennwoerter(b).includes(nachname));
+    if (gleich || arzt) return gleich || arzt;
+  }
   // 2. Briefkopf: erste passende Zeile im oberen Teil
   for (const z of zeilen.slice(0, 20)) {
-    if (KEIN_ERBRINGER.test(z)) continue;
+    if (KEIN_ERBRINGER.test(z) || (stelle && VERRECHNUNG.test(z))) continue;
     const teil = z.split(/\s[·|•–-]\s|\s{3,}|,\s(?=\d{5}\s)/).find((t) => ERBRINGER.test(t));
-    if (teil) {
+    if (teil && !nurVerrechnungsstelle(teil, stelle)) {
       let sauber = teil.replace(/^[\s·|•–-]+|[\s·|•–,-]+$/g, '').trim();
       // Nur allgemeine Wörter („Praxis für Ergotherapie“)? Dann den Ort aus derselben Zeile ergänzen.
       const ort = /\b\d{5}\s+([A-ZÄÖÜ][A-Za-zäöüß-]+)/.exec(z)?.[1];
@@ -229,7 +295,7 @@ function findeErbringer(zeilen: string[], text: string, bekannte: string[]): str
     }
   }
   // 3. Firmenzeile im Briefkopf
-  const firma = zeilen.slice(0, 10).find((z) => /\b(gmbh|ggmbh|e\.\s?v\.|ag|kg|ohg)\b/i.test(z) && !KEIN_ERBRINGER.test(z));
+  const firma = zeilen.slice(0, 10).find((z) => !(stelle && VERRECHNUNG.test(z)) && /\b(gmbh|ggmbh|e\.\s?v\.|ag|kg|ohg)\b/i.test(z) && !KEIN_ERBRINGER.test(z));
   return firma?.trim().slice(0, 70);
 }
 
@@ -270,7 +336,9 @@ export function rechnungAuslesen(roh: string, k: ParserKontext): Recognition {
   e.dueDate = findeFaellig(zeilen, e.date);
   if (e.dueDate && e.date && e.dueDate < e.date) e.dueDate = undefined;
   e.invoiceNumber = findeRechnungsnummer(zeilen);
-  e.provider = findeErbringer(zeilen, text, k.bekannteErbringer);
+  const stelle = findeVerrechnungsstelle(zeilen);
+  e.billingOffice = stelle && (bekannterErbringerImText(stelle, k.bekannteVerrechnungsstellen ?? []) ?? stelle);
+  e.provider = findeErbringer(zeilen, text, k.bekannteErbringer, stelle);
   e.kind = PFLEGE.test(text) ? 'care' : 'illness';
   if (e.kind === 'illness' && VORSORGE.test(text)) e.preventive = true;
   e.personId = findePerson(zeilen, k.personen);

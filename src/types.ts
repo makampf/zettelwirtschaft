@@ -88,6 +88,8 @@ export interface Invoice {
   /** Rechnungsdatum (YYYY-MM-DD). */
   date: string;
   provider: string;
+  /** Verrechnungsstelle, die im Auftrag des Leistungserbringers abrechnet (optional). */
+  billingOffice?: string;
   invoiceNumber: string;
   description: string;
   /** Rechnungsbetrag in Cent. */
