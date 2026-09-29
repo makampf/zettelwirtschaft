@@ -18,6 +18,16 @@ export const KT_KURZ: Record<Payer, string> = {
   ppv: 'PPV',
 };
 
+/** Name eines Kostenträgers; bei gemeinsamem Vertrag (KV + PV) steht die PKV für beide. */
+export function ktName(kt: Payer, person?: Pick<Person, 'pkv'>): string {
+  return kt === 'pkv' && person?.pkv.includesCare ? 'Private Kranken- und Pflegeversicherung' : KT_NAME[kt];
+}
+
+/** Kurzname eines Kostenträgers, z. B. „PKV/PPV“ bei gemeinsamem Vertrag. */
+export function ktKurz(kt: Payer, person?: Pick<Person, 'pkv'>): string {
+  return kt === 'pkv' && person?.pkv.includesCare ? 'PKV/PPV' : KT_KURZ[kt];
+}
+
 export const ART_NAME: Record<ServiceKind, string> = {
   illness: 'Krankheit',
   care: 'Pflege',
@@ -67,9 +77,13 @@ export interface Person {
     premiumRefundEnabled: boolean;
     /** Beitragsrückerstattung pro leistungsfreiem Jahr in Cent (0 = Betrag unbekannt). */
     premiumRefund: number;
-    /** Selbstbehalt und BRE gelten gemeinsam für Kranken- und Pflegeversicherung. */
+    /**
+     * Pflegeversicherung ist Teil desselben Vertrags: gleicher Versicherer, Tarif und Nummer, gemeinsame Einreichung,
+     * Selbstbehalt und BRE. Sonst ist die PPV separat (eigene Angaben in `ppv`, ohne Selbstbehalt/BRE).
+     */
     includesCare: boolean;
   };
+  /** Pflegeversicherung; bei gemeinsamem Vertrag wird nur `rate` (Erstattungsquote Pflege) verwendet. */
   ppv: { name: string; tariff: string; number: string; /** Erstattungsquote in Prozent. */ rate: number };
   note: string;
 }

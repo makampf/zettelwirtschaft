@@ -8,7 +8,7 @@ export function neuePerson(name: string, farbe: string, beihilfeSatz: number | n
     name,
     color: farbe,
     beihilfe: { eligible: beihilfeSatz != null, office: '', reference: '', rateIllness: satz, rateCare: satz, deadlineMonths: 12 },
-    pkv: { name: '', tariff: '', number: '', rate: 100 - satz, deductiblePercent: 0, deductibleMax: 0, premiumRefundEnabled: false, premiumRefund: 0, includesCare: false },
+    pkv: { name: '', tariff: '', number: '', rate: 100 - satz, deductiblePercent: 0, deductibleMax: 0, premiumRefundEnabled: false, premiumRefund: 0, includesCare: true },
     ppv: { name: '', tariff: '', number: '', rate: 100 - satz },
     note: '',
   };

@@ -13,8 +13,9 @@ oder, in der GitHub-Pages- bzw. Datei-Version, **nur lokal im Browser** (Indexed
 ## Funktionen
 
 - **Personen** mit oder ohne Beihilfeberechtigung (Beihilfestelle, Bemessungssätze getrennt für Krankheit/Pflege, Antragsfrist)
-  sowie PKV/PPV mit Versicherer, Tarif und Erstattungsquote, **Selbstbehalt** (z. B. 20 % der Erstattung, max. 400 €/Jahr –
-  wahlweise gemeinsam für Kranken- und Pflegeversicherung) und **Beitragsrückerstattung**
+  sowie PKV/PPV mit Versicherer, Tarif und Erstattungsquote, **Selbstbehalt** (z. B. 20 % der Erstattung, max. 400 €/Jahr)
+  und **Beitragsrückerstattung**. Kranken- und Pflegeversicherung sind standardmäßig **ein gemeinsamer Vertrag** (gleiche
+  Nummer, eine Einreichung, gemeinsamer Selbstbehalt und BRE, eigene Quote für Pflege); bei Bedarf lässt sich die PPV abtrennen
 - **Gemeinsam versicherte Personen** (z. B. Großeltern): Einreichungen und Belegliste enthalten die Rechnungen beider
 - **Rechnungen** erfassen (Krankheit oder Pflege) inkl. Belegen als PDF/Foto, Zahlungsziel und Bezahlt-Datum
   - **Aus Beleg erfassen:** PDF oder Foto hochladen (am Handy direkt mit der Kamera) – Betrag, Rechnungsdatum, Zahlungsziel,
@@ -42,7 +43,9 @@ oder, in der GitHub-Pages- bzw. Datei-Version, **nur lokal im Browser** (Indexed
 - **Sicherung**: kompletter Export/Import inkl. Belegen als JSON-Datei
 
 Statuslogik je Rechnung und Stelle: *noch einreichen* → *eingereicht* → *erstattet* / *abgelehnt* (oder *wird nicht eingereicht*).
-Krankheitsrechnungen gehen an Beihilfe + PKV, Pflegerechnungen an Beihilfe + PPV (ohne Beihilfeberechtigung nur an PKV bzw. PPV).
+Krankheitsrechnungen gehen an Beihilfe + PKV, Pflegerechnungen an Beihilfe + PKV (gemeinsamer Vertrag) bzw. Beihilfe + PPV
+(getrennte Pflegeversicherung); ohne Beihilfeberechtigung nur an die Versicherung. Die Auswertung trennt weiterhin nach
+Krankheit und Pflege.
 
 ## Benutzung
 

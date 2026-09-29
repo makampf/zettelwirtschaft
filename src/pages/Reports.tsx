@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { jahreswerte, rechnungUebersicht } from '../calc';
+import { jahreswerte, rechnungUebersicht, sparte } from '../calc';
 import { Leer, PersonChip } from '../components/ui';
 import { datum, euro } from '../format';
 import { useNav } from '../nav';
@@ -30,7 +30,9 @@ export default function Reports() {
       .map((r) => {
         const p = personById(r.personId)!;
         const u = rechnungUebersicht(r, p, state);
-        const erst = (kt: Payer) => u.infos.find((i) => i.kt === kt && i.status === 'erstattet')?.erstattet ?? 0;
+        // Versicherungserstattung nach Sparte der Rechnung (Pflege → PPV), auch bei gemeinsamem Vertrag
+        const erst = (spalte: Payer) =>
+          u.infos.find((i) => (i.kt === 'beihilfe' ? 'beihilfe' : sparte(r.kind)) === spalte && i.status === 'erstattet')?.erstattet ?? 0;
         return [text(p.name), datum(r.date), ART_NAME[r.kind], text(r.provider), text(r.billingOffice ?? ''), text(r.invoiceNumber), text(r.description), zahl(r.amount), datum(r.paidDate).replace('–', ''), zahl(erst('beihilfe')), zahl(erst('pkv')), zahl(erst('ppv')), zahl(u.ausstehend), zahl(u.eigenanteil)].join(';');
       });
     const blob = new Blob(['﻿' + [kopf.join(';'), ...rows].join('\r\n')], { type: 'text/csv;charset=utf-8' });

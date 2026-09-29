@@ -7,8 +7,9 @@ import { useStore } from '../store';
 import {
   ART_NAME,
   KOSTENTRAEGER,
-  KT_KURZ,
   KT_NAME,
+  ktKurz,
+  ktName,
   WEG_NAME,
   type Submission,
   type SubmissionChannel,
@@ -99,7 +100,7 @@ export default function Submissions() {
                 <tr key={e.id}>
                   <td>{datum(e.submittedDate)}<br /><small className="grau">{WEG_NAME[e.channel]}</small></td>
                   <td><div className="chips">{personen.map((p) => <PersonChip key={p.id} person={p} />)}</div></td>
-                  <td>{KT_KURZ[e.payer]}</td>
+                  <td>{ktKurz(e.payer, personen[0])}</td>
                   <td>{e.reference || '–'}{e.fileIds.length > 0 && ' 📎'}</td>
                   <td className="zahl">{e.items.length}</td>
                   <td className="zahl">{euro(summe)}</td>
@@ -192,7 +193,7 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
     const betroffen = new Map<string, Person>();
     for (const r of kandidaten) {
       const p = personById(r.personId);
-      if (!p || !gewaehlt.has(r.id) || versicherungFuer(r.kind) !== e.payer || !breRelevant(r, p)) continue;
+      if (!p || !gewaehlt.has(r.id) || versicherungFuer(r.kind, p) !== e.payer || !breRelevant(r, p)) continue;
       betroffen.set(`${p.id}|${r.date.slice(0, 4)}`, p);
     }
     return [...betroffen]
@@ -242,7 +243,9 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
           </Feld>
           <Feld label="Eingereicht bei">
             <select value={e.payer} disabled={!!einreichung} onChange={(ev) => { set('payer', ev.target.value as Payer); setVorbelegt(false); }}>
-              {KOSTENTRAEGER.map((k) => <option key={k} value={k}>{KT_NAME[k]}{person && traegerName(person, k)}</option>)}
+              {KOSTENTRAEGER.filter((k) => k === e.payer || k !== 'ppv' || !person?.pkv.includesCare).map((k) => (
+                <option key={k} value={k}>{ktName(k, person)}{person && traegerName(person, k)}</option>
+              ))}
             </select>
           </Feld>
           <Feld label="Eingereicht am">
@@ -261,7 +264,7 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
         <fieldset>
           <legend>Enthaltene Rechnungen</legend>
           {kandidaten.length === 0 ? (
-            <Leer>Keine offenen Rechnungen für {e.personIds.map((id) => personById(id)?.name).join(' und ')} bei {KT_KURZ[e.payer]}.</Leer>
+            <Leer>Keine offenen Rechnungen für {e.personIds.map((id) => personById(id)?.name).join(' und ')} bei {ktKurz(e.payer, person)}.</Leer>
           ) : (
             <div className="tabelle-wrap">
               <table className="tabelle kompakt">
@@ -382,7 +385,7 @@ function BescheidFormular({ einreichung, onClose }: { einreichung: Submission; o
   const erw = rechnungen.reduce((s, { r }) => s + erwartetFuerRechnung(state, r, e.payer), 0);
 
   return (
-    <Modal titel={`Bescheid – ${KT_NAME[e.payer]} – ${namen(personen)}`} onClose={onClose} breit>
+    <Modal titel={`Bescheid – ${ktName(e.payer, personen[0])} – ${namen(personen)}`} onClose={onClose} breit>
       <form
         onSubmit={async (ev) => {
           ev.preventDefault();
@@ -481,7 +484,7 @@ function Belegliste({ einreichung: e, onClose }: { einreichung: Submission; onCl
   return (
     <Modal titel="Belegliste" onClose={onClose} breit>
       <div className="druck">
-        <h2>Belegaufstellung – {KT_NAME[e.payer]}</h2>
+        <h2>Belegaufstellung – {ktName(e.payer, personen[0])}</h2>
         <p>
           {personen.map((p) => (
             <span key={p.id}>

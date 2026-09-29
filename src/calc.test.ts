@@ -14,7 +14,7 @@ import {
 } from './calc';
 import { parseEuro, plusMonate, tageZwischen } from './format';
 import { migriere } from './migration';
-import type { AppState, Submission, Invoice } from './types';
+import { ktKurz, ktName, type AppState, type Person, type Submission, type Invoice } from './types';
 
 let zaehler = 0;
 function rechnung(teil: Partial<Invoice> & { personId: string }): Invoice {
@@ -76,12 +76,22 @@ describe('Datum', () => {
 });
 
 describe('Kostenträger', () => {
-  it('ohne Beihilfeberechtigung nur PKV bzw. PPV', () => {
+  it('gemeinsamer Vertrag: Kranken- und Pflegerechnungen gehen an die PKV', () => {
     const { ich, oma } = setup();
     expect(traegerFuer('illness', ich)).toEqual(['pkv']);
-    expect(traegerFuer('care', ich)).toEqual(['ppv']);
+    expect(traegerFuer('care', ich)).toEqual(['pkv']);
     expect(traegerFuer('illness', oma)).toEqual(['beihilfe', 'pkv']);
-    expect(traegerFuer('care', oma)).toEqual(['beihilfe', 'ppv']);
+    expect(traegerFuer('care', oma)).toEqual(['beihilfe', 'pkv']);
+    expect(ktName('pkv', ich)).toBe('Private Kranken- und Pflegeversicherung');
+    expect(ktKurz('pkv', ich)).toBe('PKV/PPV');
+  });
+
+  it('getrennte Pflegeversicherung: Pflegerechnungen gehen an die PPV', () => {
+    const { ich, oma } = setup();
+    const getrennt = (p: Person) => ({ ...p, pkv: { ...p.pkv, includesCare: false } });
+    expect(traegerFuer('care', getrennt(ich))).toEqual(['ppv']);
+    expect(traegerFuer('care', getrennt(oma))).toEqual(['beihilfe', 'ppv']);
+    expect(ktName('pkv', getrennt(ich))).toBe('Private Krankenversicherung');
   });
 });
 
@@ -122,11 +132,29 @@ describe('Erstattung mit Beihilfe', () => {
     expect(einreichbareRechnungen(state, oma.id, 'pkv').map((x) => x.id)).toEqual([r.id]);
   });
 
-  it('Pflegerechnungen gehen an Beihilfe und PPV, nicht an PKV', () => {
+  it('Pflegerechnungen gehen bei getrennter PPV an Beihilfe und PPV, nicht an PKV', () => {
     const { state, oma } = setup();
+    state.people[1] = { ...oma, pkv: { ...oma.pkv, includesCare: false } };
     state.invoices.push(rechnung({ personId: oma.id, kind: 'care' }));
     expect(einreichbareRechnungen(state, oma.id, 'ppv')).toHaveLength(1);
     expect(einreichbareRechnungen(state, oma.id, 'pkv')).toHaveLength(0);
+  });
+
+  it('gemeinsamer Vertrag: Pflegerechnung mit PKV einreichen, Quote Pflege, Auswertung als PPV', () => {
+    const { state, oma } = setup();
+    const krank = rechnung({ personId: oma.id, amount: 10000 });
+    const pflege = rechnung({ personId: oma.id, kind: 'care', amount: 20000 });
+    state.invoices.push(krank, pflege);
+    state.people[1] = oma;
+    oma.ppv.rate = 50;
+    expect(einreichbareRechnungen(state, oma.id, 'pkv')).toHaveLength(2);
+    expect(einreichbareRechnungen(state, oma.id, 'ppv')).toHaveLength(0);
+    expect(erwartet(pflege, oma, 'pkv', state.invoices)).toBe(10000); // 50 % Pflege statt 30 %
+    state.submissions.push(
+      einreichung({ personId: oma.id, payer: 'pkv', status: 'decided', items: [{ invoiceId: krank.id, reimbursed: 3000 }, { invoiceId: pflege.id, reimbursed: 10000 }] }),
+    );
+    const w = jahreswerte(state, oma.id, 2026);
+    expect(w.erstattet).toEqual({ beihilfe: 0, pkv: 3000, ppv: 10000 });
   });
 
   it('zurückgehaltene Positionen zählen zum Eigenanteil', () => {
@@ -174,7 +202,7 @@ describe('Selbstbehalt', () => {
     const pflege = rechnung({ personId: ich.id, kind: 'care', date: '2026-01-10', amount: 150000 }); // SB 300 €
     const kv = rechnung({ personId: ich.id, date: '2026-02-10', amount: 100000 }); // SB nur noch 100 €
     const alle = [pflege, kv];
-    expect(erwartet(pflege, ich, 'ppv', alle)).toBe(120000);
+    expect(erwartet(pflege, ich, 'pkv', alle)).toBe(120000);
     expect(selbstbehalt(kv, ich, alle)).toBe(10000);
     expect(erwartet(kv, ich, 'pkv', alle)).toBe(90000);
   });

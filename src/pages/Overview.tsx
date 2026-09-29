@@ -3,7 +3,7 @@ import { Leer, PersonChip } from '../components/ui';
 import { euro } from '../format';
 import { useNav } from '../nav';
 import { useStore } from '../store';
-import { KOSTENTRAEGER, KT_NAME, type Payer, type Person, type Invoice } from '../types';
+import { KOSTENTRAEGER, ktName, type Payer, type Person, type Invoice } from '../types';
 
 export default function Overview() {
   const { state, personById } = useStore();
@@ -116,7 +116,7 @@ function PersonKarte({ person }: { person: Person }) {
       <ul className="kt-liste">
         {relevant.map((kt) => (
           <li key={kt}>
-            <span>{KT_NAME[kt]}</span>
+            <span>{ktName(kt, person)}</span>
             {einreichen[kt].n > 0 ? (
               <button className="klein" onClick={() => nav.gehe('einreichungen', { neu: true, personId: person.id, kt })} title="Jetzt Einreichung anlegen">
                 {einreichen[kt].n}× · {euro(einreichen[kt].betrag)} →
@@ -132,13 +132,13 @@ function PersonKarte({ person }: { person: Person }) {
       <ul className="kt-liste">
         {relevant.map((kt) => (
           <li key={kt}>
-            <span>{KT_NAME[kt]}</span>
+            <span>{ktName(kt, person)}</span>
             {ausstehend[kt].n > 0 ? <strong>{euro(ausstehend[kt].erwartet)}</strong> : <span className="grau">–</span>}
           </li>
         ))}
       </ul>
 
-      {breChecks.map((c) => <BreBox key={c.jahr} check={c} laufend={c.jahr === Number(jahr)} />)}
+      {breChecks.map((c) => <BreBox key={c.jahr} person={person} check={c} laufend={c.jahr === Number(jahr)} />)}
 
       <div className="fuss">
         <span>{jahr}: Rechnungen {euro(summeJahr)}</span>
@@ -148,11 +148,11 @@ function PersonKarte({ person }: { person: Person }) {
   );
 }
 
-function BreBox({ check: c, laufend }: { check: BreCheck; laufend: boolean }) {
+function BreBox({ person, check: c, laufend }: { person: Person; check: BreCheck; laufend: boolean }) {
   const { speichereRechnung } = useStore();
   const setzen = (liste: Invoice[], halten: boolean) => {
     for (const r of liste) {
-      const kt = versicherungFuer(r.kind);
+      const kt = versicherungFuer(r.kind, person);
       const ohne = r.heldBack.filter((k) => k !== kt);
       speichereRechnung({ ...r, heldBack: halten ? [...ohne, kt] : ohne });
     }

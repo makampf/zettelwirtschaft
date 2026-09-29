@@ -32,17 +32,20 @@ export default function People() {
               ) : (
                 <dd className="grau">nicht beihilfeberechtigt</dd>
               )}
-              <dt>Krankenversicherung</dt>
+              <dt>{p.pkv.includesCare ? 'Kranken- und Pflegeversicherung' : 'Krankenversicherung'}</dt>
               <dd>
-                {p.pkv.name || <span className="grau">nicht angegeben</span>}{p.pkv.tariff && <>, Tarif {p.pkv.tariff}</>} · {p.pkv.rate} %
+                {p.pkv.name || <span className="grau">nicht angegeben</span>}{p.pkv.tariff && <>, Tarif {p.pkv.tariff}</>}
+                {' · '}{p.pkv.includesCare ? `${p.pkv.rate} % Krankheit · ${p.ppv.rate} % Pflege` : `${p.pkv.rate} %`}
                 {p.pkv.number && <><br />Nr. {p.pkv.number}</>}
-                {p.pkv.deductiblePercent > 0 && (
-                  <><br />Selbstbehalt {p.pkv.deductiblePercent} %, max. {euro(p.pkv.deductibleMax)}/Jahr{p.pkv.includesCare && ' (KV + PV gemeinsam)'}</>
-                )}
+                {p.pkv.deductiblePercent > 0 && <><br />Selbstbehalt {p.pkv.deductiblePercent} %, max. {euro(p.pkv.deductibleMax)}/Jahr</>}
                 {p.pkv.premiumRefundEnabled && <><br />Beitragsrückerstattung {p.pkv.premiumRefund ? `ca. ${euro(p.pkv.premiumRefund)}/Jahr` : '– Betrag noch eintragen'}</>}
               </dd>
-              <dt>Pflegeversicherung</dt>
-              <dd>{p.ppv.name || <span className="grau">nicht angegeben</span>}{p.ppv.tariff && <>, Tarif {p.ppv.tariff}</>} · {p.ppv.rate} %{p.ppv.number && <><br />Nr. {p.ppv.number}</>}</dd>
+              {!p.pkv.includesCare && (
+                <>
+                  <dt>Pflegeversicherung</dt>
+                  <dd>{p.ppv.name || <span className="grau">nicht angegeben</span>}{p.ppv.tariff && <>, Tarif {p.ppv.tariff}</>} · {p.ppv.rate} %{p.ppv.number && <><br />Nr. {p.ppv.number}</>}</dd>
+                </>
+              )}
               {p.partnerId && <><dt>Gemeinsam versichert</dt><dd>mit {state.people.find((x) => x.id === p.partnerId)?.name}</dd></>}
               {p.note && <><dt>Notiz</dt><dd>{p.note}</dd></>}
             </dl>
@@ -135,8 +138,16 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
         </fieldset>
 
         <fieldset>
-          <legend>Private Krankenversicherung</legend>
+          <legend>{p.pkv.includesCare ? 'Private Kranken- und Pflegeversicherung' : 'Private Krankenversicherung'}</legend>
           <div className="raster">
+            <Feld label="Pflegeversicherung" breit hinweis={p.pkv.includesCare
+              ? 'Gleicher Versicherer, Tarif und Versicherungsnummer – gemeinsame Einreichung, Selbstbehalt und Beitragsrückerstattung'
+              : 'Eigene Angaben für die Pflegeversicherung, ohne Selbstbehalt und Beitragsrückerstattung'}>
+              <label className="checkbox">
+                <input type="checkbox" checked={p.pkv.includesCare} onChange={(e) => pkv({ includesCare: e.target.checked })} />
+                Im selben Vertrag wie die Krankenversicherung
+              </label>
+            </Feld>
             <Feld label="Versicherer">
               <input value={p.pkv.name} onChange={(e) => pkv({ name: e.target.value })} />
             </Feld>
@@ -146,23 +157,20 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
             <Feld label="Versicherungsnummer">
               <input value={p.pkv.number} onChange={(e) => pkv({ number: e.target.value })} />
             </Feld>
-            <Feld label="Erstattung (%)" hinweis={p.beihilfe.eligible ? 'Meist 100 % minus Beihilfesatz' : 'Ohne Beihilfe meist 100 %'}>
+            <Feld label={p.pkv.includesCare ? 'Erstattung Krankheit (%)' : 'Erstattung (%)'} hinweis={p.beihilfe.eligible ? 'Meist 100 % minus Beihilfesatz' : 'Ohne Beihilfe meist 100 %'}>
               <input type="number" min={0} max={100} value={p.pkv.rate} onChange={(e) => pkv({ rate: prozent(e.target.value) })} />
             </Feld>
+            {p.pkv.includesCare && (
+              <Feld label="Erstattung Pflege (%)" hinweis="Leistungen sind je nach Pflegegrad gedeckelt – ggf. pro Rechnung anpassen">
+                <input type="number" min={0} max={100} value={p.ppv.rate} onChange={(e) => ppv({ rate: prozent(e.target.value) })} />
+              </Feld>
+            )}
             <Feld label="Selbstbehalt (% der Erstattung)" hinweis="Vorsorgeuntersuchungen sind ausgenommen. 0 = kein Selbstbehalt">
               <input type="number" min={0} max={100} value={p.pkv.deductiblePercent} onChange={(e) => pkv({ deductiblePercent: prozent(e.target.value) })} />
             </Feld>
             {p.pkv.deductiblePercent > 0 && (
               <Feld label="Selbstbehalt höchstens pro Jahr">
                 <BetragFeld wert={p.pkv.deductibleMax} onChange={(c) => pkv({ deductibleMax: c ?? 0 })} />
-              </Feld>
-            )}
-            {(p.pkv.deductiblePercent > 0 || p.pkv.premiumRefundEnabled) && (
-              <Feld label="Gilt auch für Pflege" hinweis="Pflegerechnungen zählen zum selben Selbstbehalt und zur Beitragsrückerstattung">
-                <label className="checkbox">
-                  <input type="checkbox" checked={p.pkv.includesCare} onChange={(e) => pkv({ includesCare: e.target.checked })} />
-                  Selbstbehalt/BRE für KV + PV gemeinsam
-                </label>
               </Feld>
             )}
             <Feld label="Beitragsrückerstattung" hinweis="Bei Leistungsfreiheit (außer Vorsorge)">
@@ -179,7 +187,7 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
           </div>
         </fieldset>
 
-        <fieldset>
+        {!p.pkv.includesCare && <fieldset>
           <legend>Private Pflegeversicherung</legend>
           <div className="raster">
             <Feld label="Versicherer">
@@ -195,7 +203,7 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
               <input type="number" min={0} max={100} value={p.ppv.rate} onChange={(e) => ppv({ rate: prozent(e.target.value) })} />
             </Feld>
           </div>
-        </fieldset>
+        </fieldset>}
 
         <Feld label="Notiz" breit>
           <textarea rows={2} value={p.note} placeholder="z. B. Pflegegrad, Vollmacht, Ansprechpartner" onChange={(e) => setP({ ...p, note: e.target.value })} />

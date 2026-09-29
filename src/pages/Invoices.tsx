@@ -8,7 +8,7 @@ import { istLesbar, textAusDatei } from '../recognition/text';
 import { datum, euro, heute, neueId } from '../format';
 import { useNav } from '../nav';
 import { useStore } from '../store';
-import { ART_NAME, KT_KURZ, KT_NAME, WEG_NAME, type Payer, type ServiceKind, type Invoice } from '../types';
+import { ART_NAME, ktKurz, ktName, WEG_NAME, type Payer, type Person, type ServiceKind, type Invoice } from '../types';
 
 /** Felder, die aus einem Beleg vorausgefüllt werden können. */
 type ErkanntesFeld = keyof Recognition;
@@ -234,7 +234,7 @@ export function RechnungFormular({
     if (pkvManuell || !person) return;
     const halten = standardZurueckhalten(r, person, state);
     setR((x) => {
-      const kt = versicherungFuer(x.kind);
+      const kt = versicherungFuer(x.kind, person);
       const ohne = x.heldBack.filter((k) => k !== 'pkv' && k !== 'ppv');
       const neu = halten ? [...ohne, kt] : ohne;
       return neu.join() === x.heldBack.join() ? x : { ...x, heldBack: neu };
@@ -470,11 +470,12 @@ export function RechnungFormular({
                 <TraegerZeile
                   key={kt}
                   kt={kt}
+                  person={person}
                   rechnung={vorschau}
                   quoteProzent={quote(person, r.kind, kt)}
                   berechnet={erwartet({ ...vorschau, expectedOverride: {} }, person, kt, state.invoices)}
-                  selbstbehalt={kt === versicherungFuer(r.kind) ? selbstbehalt(vorschau, person, state.invoices) : 0}
-                  bre={kt === versicherungFuer(r.kind) && breRelevant(vorschau, person)}
+                  selbstbehalt={kt === versicherungFuer(r.kind, person) ? selbstbehalt(vorschau, person, state.invoices) : 0}
+                  bre={kt === versicherungFuer(r.kind, person) && breRelevant(vorschau, person)}
                   onChange={(teil) => {
                     if (teil.heldBack) setPkvManuell(true);
                     setR((x) => ({ ...x, ...teil }));
@@ -524,6 +525,7 @@ export function RechnungFormular({
 
 function TraegerZeile({
   kt,
+  person,
   rechnung,
   quoteProzent,
   berechnet,
@@ -534,6 +536,7 @@ function TraegerZeile({
   onEinreichung,
 }: {
   kt: Payer;
+  person: Person;
   rechnung: Invoice;
   quoteProzent: number;
   berechnet: number;
@@ -549,7 +552,7 @@ function TraegerZeile({
   return (
     <div className="traeger">
       <div className="traeger-kopf">
-        <strong>{KT_NAME[kt]}</strong>
+        <strong>{ktName(kt, person)}</strong>
         {status && <StatusBadge info={status} mitBetrag />}
       </div>
       {e && (
@@ -569,7 +572,7 @@ function TraegerZeile({
               onChange({ heldBack: ev.target.checked ? [...rechnung.heldBack, kt] : rechnung.heldBack.filter((x) => x !== kt) })
             }
           />
-          {bre ? 'Zurückhalten für Beitragsrückerstattung' : `Nicht bei ${KT_KURZ[kt]} einreichen`}
+          {bre ? 'Zurückhalten für Beitragsrückerstattung' : `Nicht bei ${ktKurz(kt, person)} einreichen`}
         </label>
       )}
       {!nicht && (

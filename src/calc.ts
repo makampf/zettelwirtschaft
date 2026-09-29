@@ -1,17 +1,22 @@
 import { heute, plusMonate, tageZwischen } from './format';
-import type { AppState, Submission, Payer, ServiceKind, Person, Invoice } from './types';
+import { ktKurz, type AppState, type Submission, type Payer, type ServiceKind, type Person, type Invoice } from './types';
 
 /** Datenbasis für Berechnungen, die andere Rechnungen oder Einreichungen berücksichtigen. */
 export type Kontext = Pick<AppState, 'invoices' | 'submissions'>;
 
-/** Private Versicherung für eine Leistungsart: Krankheit → PKV, Pflege → PPV. */
-export function versicherungFuer(art: ServiceKind): 'pkv' | 'ppv' {
+/** Sparte der privaten Versicherung nach Leistungsart (für Auswertungen): Krankheit → PKV, Pflege → PPV. */
+export function sparte(art: ServiceKind): 'pkv' | 'ppv' {
   return art === 'illness' ? 'pkv' : 'ppv';
+}
+
+/** Private Versicherung, bei der eine Rechnung eingereicht wird – bei gemeinsamem Vertrag (KV + PV) immer die PKV. */
+export function versicherungFuer(art: ServiceKind, person: Person): 'pkv' | 'ppv' {
+  return art === 'illness' || person.pkv.includesCare ? 'pkv' : 'ppv';
 }
 
 /** Welche Stellen sind für eine Leistungsart bei dieser Person zuständig? */
 export function traegerFuer(art: ServiceKind, person: Person): Payer[] {
-  const versicherung = versicherungFuer(art);
+  const versicherung = versicherungFuer(art, person);
   return person.beihilfe.eligible ? ['beihilfe', versicherung] : [versicherung];
 }
 
@@ -21,16 +26,16 @@ export function quote(person: Person, art: ServiceKind, kt: Payer): number {
     if (!person.beihilfe.eligible) return 0;
     return art === 'illness' ? person.beihilfe.rateIllness : person.beihilfe.rateCare;
   }
-  if (kt === 'pkv') return person.pkv.rate;
-  return person.ppv.rate;
+  // Pflege: eigene Quote, auch wenn die Pflegeversicherung Teil des PKV-Vertrags ist
+  return art === 'care' ? person.ppv.rate : person.pkv.rate;
 }
 
 /** Erstattung der privaten Versicherung vor Selbstbehalt. */
 function versicherungBrutto(r: Invoice, person: Person): number {
-  return Math.round((r.amount * quote(person, r.kind, versicherungFuer(r.kind))) / 100);
+  return Math.round((r.amount * quote(person, r.kind, versicherungFuer(r.kind, person))) / 100);
 }
 
-/** Betrifft der Tarif (Selbstbehalt/BRE) diese Leistungsart? Pflege nur, wenn KV und PV gemeinsam zählen. */
+/** Betrifft der Tarif (Selbstbehalt/BRE) diese Leistungsart? Pflege nur, wenn KV und PV ein gemeinsamer Vertrag sind. */
 function tarifBetrifft(r: Invoice, person: Person): boolean {
   return !r.preventive && (r.kind === 'illness' || person.pkv.includesCare);
 }
@@ -65,7 +70,7 @@ export function selbstbehalt(r: Invoice, person: Person, rechnungen: Invoice[]):
   if (!selbstbehaltPflichtig(r, person)) return 0;
   const jahr = r.date.slice(0, 4);
   const liste = [...rechnungen.filter((x) => x.id !== r.id), r].filter(
-    (x) => x.personId === r.personId && x.date.startsWith(jahr) && selbstbehaltPflichtig(x, person) && !x.heldBack.includes(versicherungFuer(x.kind)),
+    (x) => x.personId === r.personId && x.date.startsWith(jahr) && selbstbehaltPflichtig(x, person) && !x.heldBack.includes(versicherungFuer(x.kind, person)),
   );
   if (!liste.includes(r)) liste.push(r);
   return selbstbehaltVerteilen(liste, person).get(r.id) ?? 0;
@@ -75,7 +80,7 @@ export function selbstbehalt(r: Invoice, person: Person, rechnungen: Invoice[]):
 export function erwartet(r: Invoice, person: Person, kt: Payer, rechnungen: Invoice[]): number {
   const manuell = r.expectedOverride[kt];
   if (manuell != null) return manuell;
-  if (kt === versicherungFuer(r.kind)) return versicherungBrutto(r, person) - selbstbehalt(r, person, rechnungen);
+  if (kt === versicherungFuer(r.kind, person)) return versicherungBrutto(r, person) - selbstbehalt(r, person, rechnungen);
   return Math.round((r.amount * quote(person, r.kind, kt)) / 100);
 }
 
@@ -200,7 +205,7 @@ export interface BreCheck {
 
 /** BRE-relevant: Rechnung ohne Vorsorge, die (anteilig) an die private Versicherung des Tarifs gehen würde. */
 export function breRelevant(r: Invoice, person: Person): boolean {
-  return person.pkv.premiumRefundEnabled && tarifBetrifft(r, person) && quote(person, r.kind, versicherungFuer(r.kind)) > 0;
+  return person.pkv.premiumRefundEnabled && tarifBetrifft(r, person) && quote(person, r.kind, versicherungFuer(r.kind, person)) > 0;
 }
 
 /** Vergleicht für ein Jahr: alles bei der Versicherung einreichen oder zurückhalten und BRE erhalten? */
@@ -213,7 +218,7 @@ export function breCheck(ctx: Kontext, person: Person, jahr: number): BreCheck |
   const offen: Invoice[] = [];
   const zurueckgehalten: Invoice[] = [];
   for (const r of liste) {
-    const kt = versicherungFuer(r.kind);
+    const kt = versicherungFuer(r.kind, person);
     erstattung += r.expectedOverride[kt] ?? versicherungBrutto(r, person) - (sb.get(r.id) ?? 0);
     const e = letzteEinreichung(r, kt, ctx.submissions);
     if (e) eingereicht.push(r);
@@ -320,7 +325,7 @@ export function hinweise(state: AppState, stichtag = heute()): Hinweis[] {
     if (e.status !== 'submitted') continue;
     const tage = tageZwischen(e.submittedDate, stichtag);
     if (tage >= NACHFRAGEN_NACH_TAGEN) {
-      const name = { beihilfe: 'Beihilfe', pkv: 'PKV', ppv: 'PPV' }[e.payer];
+      const name = ktKurz(e.payer, personen.get(e.personIds[0]));
       liste.push({
         stufe: 'info',
         personId: e.personIds[0],
@@ -355,7 +360,8 @@ export function jahreswerte(state: AppState, personId: string, jahr: number, art
     const u = rechnungUebersicht(r, person, state);
     w.anzahl++;
     w.betrag += r.amount;
-    for (const i of u.infos) if (i.status === 'erstattet') w.erstattet[i.kt] += i.erstattet ?? 0;
+    // Versicherungserstattungen nach Sparte der Rechnung (Pflege → PPV), auch bei gemeinsamem Vertrag
+    for (const i of u.infos) if (i.status === 'erstattet') w.erstattet[i.kt === 'beihilfe' ? 'beihilfe' : sparte(r.kind)] += i.erstattet ?? 0;
     w.ausstehend += u.ausstehend;
     w.eigenanteil += u.eigenanteil;
   }
