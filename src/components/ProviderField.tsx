@@ -1,10 +1,10 @@
 import { useId, useMemo, useState } from 'react';
-import { erbringerVorschlaege, type ErbringerInfo } from '../erbringer';
+import { erbringerVorschlaege, type ErbringerInfo } from '../providers';
 import { datum } from '../format';
 import { ART_NAME } from '../types';
 
 /** Eingabe für den Leistungserbringer mit Vorschlägen aus bisherigen Rechnungen. */
-export function ErbringerFeld({
+export function ProviderField({
   wert,
   liste,
   onChange,

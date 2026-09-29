@@ -81,15 +81,15 @@ alternativ mit `docker compose up -d --build` lokal bauen.
 In der vorhandenen Datenbank einen Benutzer und eine Datenbank anlegen:
 
 ```sql
-CREATE USER rechnungen WITH PASSWORD 'geheim';
-CREATE DATABASE rechnungen OWNER rechnungen;
+CREATE USER zettelwirtschaft WITH PASSWORD 'geheim';
+CREATE DATABASE zettelwirtschaft OWNER zettelwirtschaft;
 ```
 
 Dann nur den App-Container starten (Tabellen legt die App beim ersten Start selbst an):
 
 ```bash
 docker run -d --name zettelwirtschaft --restart unless-stopped -p 8080:8080 \
-  -e DATABASE_URL=postgres://rechnungen:geheim@<postgres-host>:5432/rechnungen \
+  -e DATABASE_URL=postgres://zettelwirtschaft:geheim@<postgres-host>:5432/zettelwirtschaft \
   -e APP_USER=familie -e APP_PASSWORD=bitte-aendern \
   ghcr.io/makampf/zettelwirtschaft:latest
 ```
@@ -116,7 +116,7 @@ Die Anmeldung erfolgt per HTTP Basic Auth und ist ohne HTTPS nicht abhörsicher.
 
 - **Umzug aus der Browser-Version:** in der bisherigen Version *Daten → Sicherung herunterladen*, dann die App über den Server
   öffnen und dort *Daten → Sicherung einspielen*.
-- **Backup der Datenbank:** `docker compose exec db pg_dump -U rechnungen rechnungen > rechnungen-$(date +%F).sql`
+- **Backup der Datenbank:** `docker compose exec db pg_dump -U zettelwirtschaft zettelwirtschaft > zettelwirtschaft-$(date +%F).sql`
   (enthält auch alle Belege).
 - Die Daten stehen als JSON in den Tabellen `personen`, `rechnungen`, `einreichungen`; Belege in `dateien`.
   Beispiel: `SELECT daten->>'leistungserbringer', (daten->>'betrag')::int / 100.0 FROM rechnungen;`
@@ -138,10 +138,10 @@ Daten zwischen Geräten (z. B. PC und Handy) lassen sich über **Daten → Siche
 ## Technik
 
 - App: React + TypeScript + Vite, gebaut als eine einzige HTML-Datei. Berechnungslogik in `src/calc.ts`.
-- Belege auslesen (`src/erkennung/`): pdf.js für PDFs mit Textebene, tesseract.js (deutsche Sprachdaten) für Fotos und Scans,
+- Belege auslesen (`src/recognition/`): pdf.js für PDFs mit Textebene, tesseract.js (deutsche Sprachdaten) für Fotos und Scans,
   danach Heuristiken für deutsche Rechnungen (`parser.ts`). Die OCR-Dateien werden beim Build nach `dist/ocr/` kopiert
   und von GitHub Pages bzw. dem eigenen Server ausgeliefert; nur die per Doppelklick geöffnete Datei-Version lädt sie vom CDN.
-- Speicherung (`src/speicher.ts`): Server-Datenbank, wenn die App vom Server kommt, sonst IndexedDB im Browser.
+- Speicherung (`src/storage.ts`): Server-Datenbank, wenn die App vom Server kommt, sonst IndexedDB im Browser.
   Der Server-Speicher überträgt nur geänderte Datensätze.
 - Server (`server/`): Node.js + Hono + Postgres; liefert die App aus und stellt eine kleine REST-API bereit.
 - Tests mit Vitest; die Server-Tests laufen gegen eine echte Postgres, wenn `TEST_DATABASE_URL` gesetzt ist:

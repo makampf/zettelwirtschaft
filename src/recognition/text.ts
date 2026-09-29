@@ -1,5 +1,5 @@
 import type { Worker as OcrWorker } from 'tesseract.js';
-import { zeilenAusPdf, type TextTeil } from './pdfzeilen';
+import { zeilenAusPdf, type TextTeil } from './pdfLines';
 // Liest den Text eines Belegs – vollständig im Browser, nichts verlässt das Gerät.
 // PDFs mit Textebene werden direkt gelesen; Fotos und gescannte PDFs per Texterkennung (OCR).
 

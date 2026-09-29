@@ -6,7 +6,7 @@ import { useNav } from '../nav';
 import { useStore } from '../store';
 import { ART_NAME, KT_KURZ, type Kostentraeger, type Leistungsart } from '../types';
 
-export default function Auswertung() {
+export default function Reports() {
   const { state, personById } = useStore();
   const nav = useNav();
   const jahre = useMemo(() => {
@@ -36,7 +36,7 @@ export default function Auswertung() {
     const blob = new Blob(['﻿' + [kopf.join(';'), ...rows].join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `Rechnungen_${jahr}.csv`;
+    a.download = `zettelwirtschaft-invoices-${jahr}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   }

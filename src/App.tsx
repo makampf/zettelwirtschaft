@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react';
 import { hinweise } from './calc';
 import { NavCtx, type Nav, type Seite } from './nav';
-import Auswertung from './pages/Auswertung';
-import Daten from './pages/Daten';
-import Einreichungen from './pages/Einreichungen';
-import Personen from './pages/Personen';
-import Rechnungen from './pages/Rechnungen';
-import Uebersicht from './pages/Uebersicht';
+import Data from './pages/Data';
+import Invoices from './pages/Invoices';
+import Overview from './pages/Overview';
+import People from './pages/People';
+import Reports from './pages/Reports';
+import Submissions from './pages/Submissions';
 import { useStore } from './store';
 
 const SEITEN: { id: Seite; titel: string; icon: string }[] = [
@@ -67,12 +67,12 @@ export default function App() {
         </select>
       </header>
       <main>
-        {seite === 'uebersicht' && <Uebersicht />}
-        {seite === 'rechnungen' && <Rechnungen />}
-        {seite === 'einreichungen' && <Einreichungen />}
-        {seite === 'auswertung' && <Auswertung />}
-        {seite === 'personen' && <Personen />}
-        {seite === 'daten' && <Daten />}
+        {seite === 'uebersicht' && <Overview />}
+        {seite === 'rechnungen' && <Invoices />}
+        {seite === 'einreichungen' && <Submissions />}
+        {seite === 'auswertung' && <Reports />}
+        {seite === 'personen' && <People />}
+        {seite === 'daten' && <Data />}
       </main>
       <footer className="app-fuss">
         <a href="https://github.com/makampf/zettelwirtschaft/releases" target="_blank" rel="noreferrer">

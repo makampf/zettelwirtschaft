@@ -5,7 +5,7 @@ import { useNav } from '../nav';
 import { useStore } from '../store';
 import { KOSTENTRAEGER, KT_NAME, type Kostentraeger, type Person, type Rechnung } from '../types';
 
-export default function Uebersicht() {
+export default function Overview() {
   const { state, personById } = useStore();
   const nav = useNav();
   const personen = state.personen.filter((p) => !nav.personFilter || p.id === nav.personFilter);

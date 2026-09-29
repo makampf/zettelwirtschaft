@@ -1,4 +1,4 @@
-import type { Speicher } from './speicher';
+import type { Speicher } from './storage';
 import type { AppState, DateiMeta } from './types';
 
 // Speicherung in der Postgres-Datenbank des Servers (siehe server/).

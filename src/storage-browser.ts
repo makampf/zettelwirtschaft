@@ -1,9 +1,8 @@
-import type { Speicher } from './speicher';
+import type { Speicher } from './storage';
 import type { AppState, DateiMeta } from './types';
 
 // Speicherung lokal im Browser (IndexedDB) – für die GitHub-Pages-Version und die Datei-Version.
-// Name aus der Zeit vor der Umbenennung – bleibt, damit bereits gespeicherte Daten erhalten bleiben
-const DB_NAME = 'rechnungsmanager';
+const DB_NAME = 'zettelwirtschaft';
 const STATE_KEY = 'state';
 
 let dbPromise: Promise<IDBDatabase> | undefined;

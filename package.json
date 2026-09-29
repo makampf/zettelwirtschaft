@@ -11,15 +11,15 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build && tsc -p server/tsconfig.json && node scripts/drittlizenzen.mjs",
+    "build": "tsc --noEmit && vite build && tsc -p server/tsconfig.json && node scripts/third-party-licenses.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc -p server/tsconfig.json --noEmit",
     "start": "node server/dist/index.js",
     "server:dev": "tsx watch server/src/index.ts",
     "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
-    "datenschutz": "bash scripts/datenschutz-pruefung.sh",
-    "release": "semantic-release"
+    "release": "semantic-release",
+    "privacy-check": "bash scripts/privacy-check.sh"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.3",

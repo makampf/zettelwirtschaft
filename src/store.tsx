@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { startState } from './beispiel';
+import { startState } from './defaults';
 import { neueId } from './format';
 import { migriere } from './migration';
-import { speicherErmitteln, type Speicher } from './speicher';
+import { speicherErmitteln, type Speicher } from './storage';
 import type { AppState, DateiMeta, Einreichung, Person, Rechnung } from './types';
 
 interface Store {

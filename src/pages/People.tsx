@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { neuePerson } from '../beispiel';
+import { neuePerson } from '../defaults';
 import { BetragFeld, Feld, Modal } from '../components/ui';
 import { euro } from '../format';
 import { useStore } from '../store';
@@ -7,7 +7,7 @@ import type { Person } from '../types';
 
 const FARBEN = ['#2563eb', '#db2777', '#059669', '#d97706', '#7c3aed', '#0891b2', '#dc2626'];
 
-export default function Personen() {
+export default function People() {
   const { state } = useStore();
   const [bearbeiten, setBearbeiten] = useState<Person | 'neu' | null>(null);
   return (

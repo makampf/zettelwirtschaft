@@ -1,5 +1,5 @@
-import { browserSpeicher } from './speicher-browser';
-import { serverSpeicher } from './speicher-server';
+import { browserSpeicher } from './storage-browser';
+import { serverSpeicher } from './storage-server';
 import type { AppState, DateiMeta } from './types';
 
 /** Wo die Daten liegen: lokal im Browser oder in der Datenbank des Servers. */

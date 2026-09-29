@@ -32,7 +32,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Datenschutz-Prüfung (keine Belege, Fotos, Sicherungen)
-        run: bash scripts/datenschutz-pruefung.sh
+        run: bash scripts/privacy-check.sh
       - uses: actions/setup-node@v4
         with:
           node-version: 22

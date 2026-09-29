@@ -17,4 +17,5 @@ server/dist
 *.sql
 *.dump
 *sicherung*.json
+*backup*.json
 belege/

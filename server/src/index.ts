@@ -8,7 +8,7 @@ import { Datenbank } from './db.js';
 
 const env = process.env;
 if (!env.DATABASE_URL) {
-  console.error('DATABASE_URL fehlt, z. B. postgres://benutzer:passwort@host:5432/rechnungen');
+  console.error('DATABASE_URL fehlt, z. B. postgres://benutzer:passwort@host:5432/zettelwirtschaft');
   process.exit(1);
 }
 if (!env.APP_PASSWORD) {

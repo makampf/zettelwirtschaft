@@ -14,7 +14,7 @@ Dieses Repository ist **öffentlich**. Die App verwaltet Gesundheitsdaten. Desha
    Ort oder Layout-Besonderheiten, die auf eine konkrete Praxis schließen lassen).
 3. **Echte Belege, die zur Fehlersuche geteilt werden, nur außerhalb des Repositorys auswerten** (Scratchpad/Temp),
    nie ins Arbeitsverzeichnis kopieren. Erkenntnisse in anonymisierte, allgemeine Testfälle übertragen.
-4. **Vor jedem Commit** `git diff --cached` auf echte Daten prüfen. `scripts/datenschutz-pruefung.sh` läuft als
+4. **Vor jedem Commit** `git diff --cached` auf echte Daten prüfen. `scripts/privacy-check.sh` läuft als
    Git-Hook (`.githooks/pre-commit`, aktiviert durch `npm install`) und in CI – sie ersetzt die eigene Prüfung nicht.
 5. **Wird doch etwas gefunden:** sofort den Nutzer informieren und die Historie bereinigen (nach Rücksprache).
 
@@ -33,4 +33,4 @@ Dieses Repository ist **öffentlich**. Die App verwaltet Gesundheitsdaten. Desha
 - `npm install`, `npm run dev`, `npm test`, `npm run build`
 - Server-Tests brauchen Postgres: `TEST_DATABASE_URL=postgres://… npm test` (leert diese Datenbank)
 - Oberfläche, Code-Kommentare und Doku auf Deutsch; Commit-Nachrichten auf Englisch
-- Lizenz: AGPL-3.0; Drittlizenzen in `NOTICE` und `dist/THIRD-PARTY-LICENSES.txt` (`scripts/drittlizenzen.mjs`)
+- Lizenz: AGPL-3.0; Drittlizenzen in `NOTICE` und `dist/THIRD-PARTY-LICENSES.txt` (`scripts/third-party-licenses.mjs`)

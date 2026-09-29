@@ -1,4 +1,4 @@
-import { eigeneStandardwerte, grosselternStandardwerte } from './beispiel';
+import { eigeneStandardwerte, grosselternStandardwerte } from './defaults';
 import type { AppState, Einreichung, Person, Rechnung } from './types';
 
 type Beliebig = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any

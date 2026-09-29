@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { startState } from '../beispiel';
+import { startState } from '../defaults';
 import { backupErstellen, backupLesen } from '../backup';
 import { dateigroesse, heute } from '../format';
 import { useStore } from '../store';
 
-export default function Daten() {
+export default function Data() {
   const { state, speicherArt, allesErsetzen } = useStore();
   const [meldung, setMeldung] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
@@ -16,7 +16,7 @@ export default function Daten() {
       const blob = await backupErstellen(state);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `zettelwirtschaft-sicherung-${heute()}.json`;
+      a.download = `zettelwirtschaft-backup-${heute()}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
       setMeldung('Sicherung wurde heruntergeladen.');

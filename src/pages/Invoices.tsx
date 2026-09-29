@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { beihilfeFristEnde, breRelevant, erwartet, quote, rechnungUebersicht, selbstbehalt, standardZurueckhalten, traegerFuer, traegerInfo, versicherungFuer } from '../calc';
-import { ErbringerFeld } from '../components/ErbringerFeld';
+import { ProviderField } from '../components/ProviderField';
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, StatusBadge, useDateienSpeichern } from '../components/ui';
-import { erbringerListe, type ErbringerInfo } from '../erbringer';
-import { rechnungAuslesen, type Erkennung } from '../erkennung/parser';
-import { istLesbar, textAusDatei } from '../erkennung/text';
+import { erbringerListe, type ErbringerInfo } from '../providers';
+import { rechnungAuslesen, type Erkennung } from '../recognition/parser';
+import { istLesbar, textAusDatei } from '../recognition/text';
 import { datum, euro, heute, neueId } from '../format';
 import { useNav } from '../nav';
 import { useStore } from '../store';
@@ -34,7 +34,7 @@ const FILTER_NAME: Record<Filter, string> = {
   abgeschlossen: 'Abgeschlossen',
 };
 
-export default function Rechnungen() {
+export default function Invoices() {
   const { state, personById } = useStore();
   const nav = useNav();
   const [filter, setFilter] = useState<Filter>('alle');
@@ -404,7 +404,7 @@ export function RechnungFormular({
             <BetragFeld wert={betrag} onChange={setzeBetrag} pflicht />
           </Feld>
           <Feld label="Leistungserbringer" hinweis="Arzt, Apotheke, Pflegedienst, Heim …" erkannt={erkannt.has('leistungserbringer')}>
-            <ErbringerFeld
+            <ProviderField
               wert={r.leistungserbringer}
               liste={erbringerInfos}
               onChange={(name) => {

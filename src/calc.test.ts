@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { startState } from './beispiel';
+import { startState } from './defaults';
 import {
   breCheck,
   einreichbareRechnungen,

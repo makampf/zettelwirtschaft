@@ -19,7 +19,7 @@ import {
 
 type Ansicht = { typ: 'bearbeiten'; e?: Einreichung; personId?: string; kt?: Kostentraeger } | { typ: 'bescheid'; e: Einreichung } | { typ: 'druck'; e: Einreichung };
 
-export default function Einreichungen() {
+export default function Submissions() {
   const { state, personById } = useStore();
   const nav = useNav();
   const [statusFilter, setStatusFilter] = useState<'' | 'eingereicht' | 'beschieden'>('');

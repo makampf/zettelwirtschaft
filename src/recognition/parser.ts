@@ -1,4 +1,4 @@
-import { bekannterErbringerImText, kennwoerter } from '../erbringer';
+import { bekannterErbringerImText, kennwoerter } from '../providers';
 import { plusTage } from '../format';
 import type { Leistungsart, Person } from '../types';
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { bekannterErbringerImText, erbringerListe, erbringerVorschlaege, normalisiere } from './erbringer';
-import { rechnungAuslesen } from './erkennung/parser';
+import { bekannterErbringerImText, erbringerListe, erbringerVorschlaege, normalisiere } from './providers';
+import { rechnungAuslesen } from './recognition/parser';
 import type { Leistungsart, Rechnung } from './types';
 
 let n = 0;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { zeilenAusPdf, type TextTeil } from './pdfzeilen';
+import { zeilenAusPdf, type TextTeil } from './pdfLines';
 
 const t = (str: string, x: number, y: number, width: number, groesse = 10): TextTeil => ({ str, transform: [groesse, 0, 0, groesse, x, y], width });
 
