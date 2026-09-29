@@ -39,6 +39,8 @@ export interface Person {
   farbe: string;
   /** Gemeinsam versicherte Person (z. B. Ehepartner): Einreichungen enthalten standardmäßig beide. */
   partnerId?: string;
+  /** Name(n), unter denen die Person auf Rechnungen steht (kommagetrennt) – für das Auslesen von Belegen. */
+  namenAufRechnung?: string;
   beihilfe: {
     /** Ohne Beihilfeberechtigung gehen Rechnungen nur an PKV bzw. PPV. */
     berechtigt: boolean;

@@ -103,6 +103,31 @@ describe.skipIf(!url)('Server-API', () => {
     expect((await app.request('/api/dateien/d1')).status).toBe(404);
   });
 
+  it('liefert die Dateien für die Texterkennung aus', async () => {
+    const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const { tmpdir } = await import('node:os');
+    const dir = mkdtempSync(join(tmpdir(), 'ocr-'));
+    mkdirSync(join(dir, 'core'));
+    mkdirSync(join(dir, 'lang'));
+    writeFileSync(join(dir, 'worker.min.js'), '//');
+    writeFileSync(join(dir, 'core', 'tesseract-core-simd-lstm.wasm.js'), '//');
+    writeFileSync(join(dir, 'lang', 'deu.traineddata.gz'), 'x');
+    writeFileSync(join(dir, 'geheim.txt'), 'x');
+    const app = erstelleApp(db, { ocrVerzeichnis: dir });
+    const worker = await app.request('/ocr/worker.min.js');
+    expect(worker.status).toBe(200);
+    expect(worker.headers.get('cache-control')).toContain('max-age');
+    const kern = await app.request('/ocr/core/tesseract-core-simd-lstm.wasm.js');
+    expect(kern.headers.get('content-type')).toBe('text/javascript');
+    const lang = await app.request('/ocr/lang/deu.traineddata.gz');
+    expect(lang.status).toBe(200);
+    expect(lang.headers.get('content-encoding')).toBeNull();
+    expect((await app.request('/ocr/core/../../package.json')).status).toBe(404);
+    expect((await app.request('/ocr/lang/eng.traineddata.gz')).status).toBe(404);
+    expect((await app.request('/ocr/geheim.txt')).status).toBe(404);
+  });
+
   it('verlangt den CSRF-Header für Änderungen', async () => {
     const app = erstelleApp(db);
     const res = await app.request('/api/aenderungen', { method: 'POST', headers: { 'content-type': 'text/plain' }, body: '{"version":1}' });

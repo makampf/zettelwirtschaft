@@ -27,15 +27,33 @@ export function Modal({ titel, onClose, children, breit }: { titel: string; onCl
  * Beschriftetes Formularfeld. Mit `gruppe` wird statt eines <label> eine Gruppe gerendert –
  * nötig, wenn der Inhalt mehrere Buttons enthält (ein <label> würde sonst den ersten Button benennen).
  */
-export function Feld({ label, children, hinweis, breit, gruppe }: { label: string; children: ReactNode; hinweis?: string; breit?: boolean; gruppe?: boolean }) {
+export function Feld({
+  label,
+  children,
+  hinweis,
+  breit,
+  gruppe,
+  erkannt,
+}: {
+  label: string;
+  children: ReactNode;
+  hinweis?: string;
+  breit?: boolean;
+  gruppe?: boolean;
+  /** Wert wurde aus einem Beleg übernommen und sollte geprüft werden. */
+  erkannt?: boolean;
+}) {
   const inhalt = (
     <>
-      <span>{label}</span>
+      <span>
+        {label}
+        {erkannt && <em className="erkannt-marke" title="Aus dem Beleg übernommen – bitte prüfen"> aus Beleg</em>}
+      </span>
       {children}
       {hinweis && <small>{hinweis}</small>}
     </>
   );
-  const klasse = `feld ${breit ? 'breit' : ''}`;
+  const klasse = `feld ${breit ? 'breit' : ''} ${erkannt ? 'erkannt' : ''}`;
   return gruppe ? (
     <div className={klasse} role="group" aria-label={label}>{inhalt}</div>
   ) : (

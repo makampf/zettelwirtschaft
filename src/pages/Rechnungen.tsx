@@ -1,10 +1,26 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { beihilfeFristEnde, breRelevant, erwartet, quote, rechnungUebersicht, selbstbehalt, standardZurueckhalten, traegerFuer, traegerInfo, versicherungFuer } from '../calc';
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, StatusBadge, useDateienSpeichern } from '../components/ui';
+import { rechnungAuslesen, type Erkennung } from '../erkennung/parser';
+import { istLesbar, textAusDatei } from '../erkennung/text';
 import { datum, euro, heute, neueId } from '../format';
 import { useNav } from '../nav';
 import { useStore } from '../store';
 import { ART_NAME, KT_KURZ, KT_NAME, WEG_NAME, type Kostentraeger, type Leistungsart, type Rechnung } from '../types';
+
+/** Felder, die aus einem Beleg vorausgefüllt werden können. */
+type ErkanntesFeld = keyof Erkennung;
+
+const FELD_NAME: Record<ErkanntesFeld, string> = {
+  betrag: 'Betrag',
+  datum: 'Rechnungsdatum',
+  faelligAm: 'Zahlungsziel',
+  rechnungsnummer: 'Rechnungsnummer',
+  leistungserbringer: 'Leistungserbringer',
+  art: 'Art',
+  vorsorge: 'Vorsorge',
+  personId: 'Person',
+};
 
 type Filter = 'alle' | 'einreichen' | 'ausstehend' | 'unbezahlt' | 'abgeschlossen';
 
@@ -24,7 +40,7 @@ export default function Rechnungen() {
   const [jahr, setJahr] = useState('');
   const [suche, setSuche] = useState('');
   // `n` erzwingt ein frisches Formular bei „Speichern & nächste“
-  const [bearbeiten, setBearbeiten] = useState<{ r?: Rechnung; n: number; personId?: string } | null>(null);
+  const [bearbeiten, setBearbeiten] = useState<{ r?: Rechnung; n: number; personId?: string; belege?: File[] } | null>(null);
 
   useEffect(() => {
     if (!nav.ziel) return;
@@ -65,7 +81,22 @@ export default function Rechnungen() {
     <section>
       <div className="seitenkopf">
         <h1>Rechnungen</h1>
-        <button className="primaer" onClick={() => setBearbeiten({ n: 0 })}>+ Neue Rechnung</button>
+        <div className="zeile">
+          <label className="button" title="PDF oder Foto einer Rechnung – die Angaben werden automatisch ausgelesen">
+            📄 Aus Beleg erfassen
+            <input
+              type="file"
+              accept="application/pdf,image/*"
+              hidden
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                e.target.value = '';
+                if (files.length) setBearbeiten({ n: (bearbeiten?.n ?? 0) + 1, belege: files });
+              }}
+            />
+          </label>
+          <button className="primaer" onClick={() => setBearbeiten({ n: 0 })}>+ Neue Rechnung</button>
+        </div>
       </div>
 
       <div className="filterleiste">
@@ -137,6 +168,7 @@ export default function Rechnungen() {
           key={bearbeiten.r?.id ?? `neu-${bearbeiten.n}`}
           rechnung={bearbeiten.r}
           personId={bearbeiten.personId}
+          belege={bearbeiten.belege}
           onClose={() => setBearbeiten(null)}
           onNeu={(personId) => setBearbeiten({ n: bearbeiten.n + 1, personId })}
         />
@@ -166,22 +198,29 @@ function leereRechnung(personId: string, art: Leistungsart = 'krankheit'): Rechn
 export function RechnungFormular({
   rechnung,
   personId,
+  belege,
   onClose,
   onNeu,
 }: {
   rechnung?: Rechnung;
   personId?: string;
+  /** Beim Öffnen schon ausgewählte Belege – werden sofort ausgelesen. */
+  belege?: File[];
   onClose: () => void;
   onNeu?: (personId: string) => void;
 }) {
-  const { state, personById, speichereRechnung, loescheRechnung } = useStore();
+  const { state, personById, speichereRechnung, loescheRechnung, dateiLaden } = useStore();
   const nav = useNav();
   const dateienSpeichern = useDateienSpeichern();
   const [r, setR] = useState<Rechnung>(() => rechnung ?? leereRechnung(personId || nav.personFilter || state.personen[0]?.id || ''));
   const [betrag, setBetrag] = useState<number | undefined>(rechnung?.betrag);
   const [dateiIds, setDateiIds] = useState(r.dateiIds);
-  const [neueDateien, setNeueDateien] = useState<File[]>([]);
+  const [neueDateien, setNeueDateien] = useState<File[]>(belege ?? []);
   const [speichert, setSpeichert] = useState(false);
+  // Auslesen von Belegen: welche Felder wurden übernommen, was hat der Nutzer selbst eingegeben?
+  const [erkannt, setErkannt] = useState<Set<ErkanntesFeld>>(new Set());
+  const [leseStatus, setLeseStatus] = useState<{ art: 'laeuft' | 'ok' | 'leer' | 'fehler'; text: string } | null>(null);
+  const beruehrt = useRef(new Set<string>());
   // Bei neuen Rechnungen wird „Zurückhalten (BRE)“ vorbelegt, bis die Checkbox von Hand geändert wird.
   const [pkvManuell, setPkvManuell] = useState(!!rechnung);
 
@@ -198,11 +237,92 @@ export function RechnungFormular({
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [r.personId, r.art, r.vorsorge, r.datum, pkvManuell, person, state]);
-  const set = <K extends keyof Rechnung>(k: K, v: Rechnung[K]) => setR((x) => ({ ...x, [k]: v }));
+  const set = <K extends keyof Rechnung>(k: K, v: Rechnung[K]) => {
+    beruehrt.current.add(k);
+    setErkannt((e) => (e.has(k as ErkanntesFeld) ? new Set([...e].filter((x) => x !== k)) : e));
+    setR((x) => ({ ...x, [k]: v }));
+  };
+  const setzeBetrag = (c: number | undefined) => {
+    beruehrt.current.add('betrag');
+    setErkannt((e) => new Set([...e].filter((x) => x !== 'betrag')));
+    setBetrag(c);
+  };
+
+  /** Liest einen Beleg aus und füllt nur Felder, die noch leer sind bzw. nicht selbst bearbeitet wurden. */
+  async function auslesen(datei: File) {
+    setLeseStatus({ art: 'laeuft', text: 'Beleg wird ausgelesen …' });
+    try {
+      const text = await textAusDatei(datei, (t) => setLeseStatus({ art: 'laeuft', text: t }));
+      const e = rechnungAuslesen(text, { personen: state.personen, bekannteErbringer: erbringer, heute: heute() });
+      const frei = (k: string, leer: boolean) => !beruehrt.current.has(k) && (!rechnung || leer);
+      const uebernommen = new Set<ErkanntesFeld>();
+      const teil: Partial<Rechnung> = {};
+      if (e.betrag != null && frei('betrag', !betrag)) {
+        setBetrag(e.betrag);
+        uebernommen.add('betrag');
+      }
+      if (e.datum && frei('datum', false)) (teil.datum = e.datum), uebernommen.add('datum');
+      if (e.faelligAm && frei('faelligAm', !r.faelligAm)) (teil.faelligAm = e.faelligAm), uebernommen.add('faelligAm');
+      if (e.rechnungsnummer && frei('rechnungsnummer', !r.rechnungsnummer)) (teil.rechnungsnummer = e.rechnungsnummer), uebernommen.add('rechnungsnummer');
+      if (e.leistungserbringer && frei('leistungserbringer', !r.leistungserbringer)) (teil.leistungserbringer = e.leistungserbringer), uebernommen.add('leistungserbringer');
+      if (e.art && e.art !== r.art && frei('art', false)) (teil.art = e.art), uebernommen.add('art');
+      if (e.vorsorge && frei('vorsorge', false)) (teil.vorsorge = true), uebernommen.add('vorsorge');
+      if (e.personId && e.personId !== r.personId && frei('personId', false)) (teil.personId = e.personId), uebernommen.add('personId');
+      setR((x) => ({ ...x, ...teil }));
+      setErkannt(uebernommen);
+      setLeseStatus(
+        uebernommen.size
+          ? { art: 'ok', text: `Aus dem Beleg übernommen: ${[...uebernommen].map((k) => FELD_NAME[k]).join(', ')} – bitte prüfen.` }
+          : { art: 'leer', text: 'Im Beleg wurden keine (neuen) Angaben erkannt. Bitte von Hand ausfüllen.' },
+      );
+    } catch (err) {
+      setLeseStatus({ art: 'fehler', text: `Beleg konnte nicht ausgelesen werden: ${err instanceof Error ? err.message : err}` });
+    }
+  }
+
+  // Beim Öffnen mit Beleg sofort auslesen
+  useEffect(() => {
+    const erster = belege?.find(istLesbar);
+    if (erster) void auslesen(erster);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function neueBelege(files: File[]) {
+    const hinzu = files.filter((f) => !neueDateien.includes(f));
+    setNeueDateien(files);
+    // Neue Rechnung: den ersten neu hinzugefügten lesbaren Beleg automatisch auslesen
+    const lesbar = hinzu.find(istLesbar);
+    if (!rechnung && lesbar && leseStatus?.art !== 'laeuft') void auslesen(lesbar);
+  }
+
+  async function vorhandenenBelegAuslesen() {
+    const neu = [...neueDateien].reverse().find(istLesbar);
+    if (neu) return auslesen(neu);
+    for (const id of [...dateiIds].reverse()) {
+      const meta = state.dateien.find((d) => d.id === id);
+      if (!meta) continue;
+      const blob = await dateiLaden(id);
+      if (!blob) continue;
+      const datei = new File([blob], meta.name, { type: meta.typ });
+      if (istLesbar(datei)) return auslesen(datei);
+    }
+    setLeseStatus({ art: 'leer', text: 'Kein lesbarer Beleg (PDF oder Bild) vorhanden.' });
+  }
   const vorschau = { ...r, betrag: betrag ?? 0 };
 
   // Leistungserbringer-Vorschläge aus bisherigen Rechnungen
   const erbringer = useMemo(() => [...new Set(state.rechnungen.map((x) => x.leistungserbringer).filter(Boolean))].sort(), [state.rechnungen]);
+  const hatLesbarenBeleg = neueDateien.some(istLesbar) || dateiIds.some((id) => /pdf|image/.test(state.dateien.find((d) => d.id === id)?.typ ?? ''));
+
+  const belegFeld = (
+    <Feld label="Belege" gruppe breit hinweis={!rechnung ? 'PDF oder Foto hinzufügen – die Angaben werden automatisch ausgelesen' : undefined}>
+      <DateiFeld vorhandene={dateiIds} onVorhandene={setDateiIds} neue={neueDateien} onNeue={neueBelege} />
+      {hatLesbarenBeleg && leseStatus?.art !== 'laeuft' && (rechnung || leseStatus) && (
+        <button type="button" className="klein" onClick={() => void vorhandenenBelegAuslesen()}>🔍 Angaben aus Beleg übernehmen</button>
+      )}
+      {leseStatus && <div className={`lesestatus ${leseStatus.art}`} role="status">{leseStatus.art === 'laeuft' ? '⏳ ' : leseStatus.art === 'ok' ? '✓ ' : leseStatus.art === 'fehler' ? '⚠️ ' : 'ℹ️ '}{leseStatus.text}</div>}
+    </Feld>
+  );
 
   async function speichern(undNeu: boolean) {
     if (betrag == null || !person) return;
@@ -224,45 +344,54 @@ export function RechnungFormular({
           e.preventDefault();
           void speichern(false);
         }}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          // Beleg per Drag & Drop auf das Formular ziehen
+          const files = Array.from(e.dataTransfer.files);
+          if (!files.length) return;
+          e.preventDefault();
+          neueBelege([...neueDateien, ...files]);
+        }}
       >
+        {!rechnung && <div className="beleg-oben">{belegFeld}</div>}
         <div className="raster">
-          <Feld label="Person">
+          <Feld label="Person" erkannt={erkannt.has('personId')}>
             <select value={r.personId} onChange={(e) => set('personId', e.target.value)} required>
               {state.personen.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </Feld>
-          <Feld label="Art" gruppe>
+          <Feld label="Art" gruppe erkannt={erkannt.has('art')}>
             <div className="segmente">
               {(['krankheit', 'pflege'] as Leistungsart[]).map((a) => (
                 <button type="button" key={a} className={r.art === a ? 'aktiv' : ''} onClick={() => set('art', a)}>{ART_NAME[a]}</button>
               ))}
             </div>
           </Feld>
-          <Feld label="Rechnungsdatum">
+          <Feld label="Rechnungsdatum" erkannt={erkannt.has('datum')}>
             <input type="date" value={r.datum} onChange={(e) => set('datum', e.target.value)} required />
           </Feld>
-          <Feld label="Betrag">
-            <BetragFeld wert={betrag} onChange={setBetrag} pflicht />
+          <Feld label="Betrag" erkannt={erkannt.has('betrag')}>
+            <BetragFeld wert={betrag} onChange={setzeBetrag} pflicht />
           </Feld>
-          <Feld label="Leistungserbringer" hinweis="Arzt, Apotheke, Pflegedienst, Heim …">
+          <Feld label="Leistungserbringer" hinweis="Arzt, Apotheke, Pflegedienst, Heim …" erkannt={erkannt.has('leistungserbringer')}>
             <input list="erbringer" value={r.leistungserbringer} onChange={(e) => set('leistungserbringer', e.target.value)} required />
             <datalist id="erbringer">{erbringer.map((e) => <option key={e} value={e} />)}</datalist>
           </Feld>
-          <Feld label="Rechnungsnummer">
+          <Feld label="Rechnungsnummer" erkannt={erkannt.has('rechnungsnummer')}>
             <input value={r.rechnungsnummer} onChange={(e) => set('rechnungsnummer', e.target.value)} />
           </Feld>
           <Feld label="Beschreibung" breit>
             <input value={r.beschreibung} placeholder="z. B. Behandlung 03/2026, Heimkosten September" onChange={(e) => set('beschreibung', e.target.value)} />
           </Feld>
           {r.art === 'krankheit' && (
-            <Feld label="Vorsorge" hinweis="Ohne Selbstbehalt, gefährdet die Beitragsrückerstattung nicht">
+            <Feld label="Vorsorge" hinweis="Ohne Selbstbehalt, gefährdet die Beitragsrückerstattung nicht" erkannt={erkannt.has('vorsorge')}>
               <label className="checkbox">
                 <input type="checkbox" checked={r.vorsorge} onChange={(e) => set('vorsorge', e.target.checked)} />
                 Vorsorgeuntersuchung
               </label>
             </Feld>
           )}
-          <Feld label="Zahlbar bis">
+          <Feld label="Zahlbar bis" erkannt={erkannt.has('faelligAm')}>
             <input type="date" value={r.faelligAm ?? ''} onChange={(e) => set('faelligAm', e.target.value || undefined)} />
           </Feld>
           <Feld label="Bezahlt am" gruppe>
@@ -301,9 +430,7 @@ export function RechnungFormular({
           </fieldset>
         )}
 
-        <Feld label="Belege" gruppe breit>
-          <DateiFeld vorhandene={dateiIds} onVorhandene={setDateiIds} neue={neueDateien} onNeue={setNeueDateien} />
-        </Feld>
+        {rechnung && belegFeld}
         <Feld label="Notiz" breit>
           <textarea rows={2} value={r.notiz} onChange={(e) => set('notiz', e.target.value)} />
         </Feld>

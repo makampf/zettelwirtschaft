@@ -38,6 +38,7 @@ async function start() {
     benutzer: env.APP_USER ?? '',
     passwort: env.APP_PASSWORD,
     maxUploadBytes: Number(env.MAX_UPLOAD_MB ?? 25) * 1024 * 1024,
+    ocrVerzeichnis: resolve(dirname(indexPfad), 'ocr'),
   });
   const port = Number(env.PORT ?? 8080);
   serve({ fetch: app.fetch, port }, () => console.log(`Rechnungsmanager läuft auf Port ${port}`));

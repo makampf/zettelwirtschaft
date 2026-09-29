@@ -212,7 +212,16 @@ legend { font-weight: 600; padding: 0 0.35rem; }
 .bre.einreichen { background: var(--blau-bg); }
 .bre .kt-liste li { border-color: rgb(0 0 0 / 0.08); font-size: 0.9rem; }
 .badge.tag { margin-left: 0.4rem; background: var(--gruen-bg); color: var(--gruen); }
+.feld.erkannt input, .feld.erkannt select, .feld.erkannt .segmente { outline: 2px solid var(--gelb); outline-offset: 1px; background: var(--gelb-bg); }
+.erkannt-marke { font-style: normal; font-weight: 500; font-size: 0.72rem; color: var(--gelb); margin-left: 0.35rem; }
+.lesestatus { font-size: 0.88rem; padding: 0.45rem 0.6rem; border-radius: 8px; background: var(--hover); }
+.lesestatus.ok { background: var(--gelb-bg); color: var(--gelb); }
+.lesestatus.fehler { background: var(--rot-bg); color: var(--rot); }
+.lesestatus.laeuft { background: var(--blau-bg); color: var(--primaer); }
 .chips { display: flex; flex-direction: column; gap: 0.15rem; }
 .speicherfehler { position: sticky; top: 0; z-index: 20; display: flex; gap: 0.75rem; align-items: center; justify-content: center; flex-wrap: wrap; padding: 0.5rem 1rem; background: var(--rot-bg); color: var(--rot); }
 .speicherort { font-size: 0.75rem; color: var(--grau); white-space: nowrap; }
 .hinweise .hinweis.info { margin-bottom: 0; }
+.feld > button { align-self: flex-start; }
+.beleg-oben { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--rand); }
+.beleg-oben .feld.breit { margin-top: 0; }

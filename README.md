@@ -14,6 +14,11 @@ oder, in der GitHub-Pages- bzw. Datei-Version, **nur lokal im Browser** (Indexed
   wahlweise gemeinsam für Kranken- und Pflegeversicherung) und **Beitragsrückerstattung**
 - **Gemeinsam versicherte Personen** (z. B. Großeltern): Einreichungen und Belegliste enthalten die Rechnungen beider
 - **Rechnungen** erfassen (Krankheit oder Pflege) inkl. Belegen als PDF/Foto, Zahlungsziel und Bezahlt-Datum
+  - **Aus Beleg erfassen:** PDF oder Foto hochladen (am Handy direkt mit der Kamera) – Betrag, Rechnungsdatum, Zahlungsziel,
+    Rechnungsnummer, Leistungserbringer, Krankheit/Pflege, Vorsorge und die Person werden automatisch vorausgefüllt und
+    zur Prüfung markiert. Das Auslesen läuft vollständig auf dem eigenen Gerät (PDF-Text bzw. Texterkennung im Browser);
+    der Beleg wird an keinen fremden Dienst geschickt. Damit die Person erkannt wird, unter *Personen* den
+    „Namen auf Rechnungen“ eintragen.
   - erwartete Erstattung wird aus den Quoten berechnet und kann pro Rechnung überschrieben werden (z. B. bei Pflege-Höchstbeträgen)
   - **Vorsorgeuntersuchungen** markieren: ohne Selbstbehalt und unschädlich für die Beitragsrückerstattung
   - Selbstbehalt wird je Kalenderjahr in Reihenfolge der Rechnungsdaten angerechnet, bis der Höchstbetrag erreicht ist
@@ -128,6 +133,9 @@ Daten zwischen Geräten (z. B. PC und Handy) lassen sich über **Daten → Siche
 ## Technik
 
 - App: React + TypeScript + Vite, gebaut als eine einzige HTML-Datei. Berechnungslogik in `src/calc.ts`.
+- Belege auslesen (`src/erkennung/`): pdf.js für PDFs mit Textebene, tesseract.js (deutsche Sprachdaten) für Fotos und Scans,
+  danach Heuristiken für deutsche Rechnungen (`parser.ts`). Die OCR-Dateien werden beim Build nach `dist/ocr/` kopiert
+  und von GitHub Pages bzw. dem eigenen Server ausgeliefert; nur die per Doppelklick geöffnete Datei-Version lädt sie vom CDN.
 - Speicherung (`src/speicher.ts`): Server-Datenbank, wenn die App vom Server kommt, sonst IndexedDB im Browser.
   Der Server-Speicher überträgt nur geänderte Datensätze.
 - Server (`server/`): Node.js + Hono + Postgres; liefert die App aus und stellt eine kleine REST-API bereit.

@@ -18,6 +18,7 @@ interface Store {
   dateienHinzufuegen: (files: File[]) => Promise<DateiMeta[]>;
   dateienEntfernen: (ids: string[]) => Promise<void>;
   dateiOeffnen: (id: string) => Promise<void>;
+  dateiLaden: (id: string) => Promise<Blob | undefined>;
   allesErsetzen: (state: AppState, dateien: Map<string, Blob>) => Promise<void>;
 }
 
@@ -152,6 +153,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         return metas;
       },
       dateienEntfernen,
+      dateiLaden: (id) => sp.ladeDatei(id),
       dateiOeffnen: async (id) => {
         if (sp.dateiUrl) {
           window.open(sp.dateiUrl(id), '_blank');

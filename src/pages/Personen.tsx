@@ -77,6 +77,9 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
           <Feld label="Name">
             <input value={p.name} onChange={(e) => setP({ ...p, name: e.target.value })} required autoFocus />
           </Feld>
+          <Feld label="Name auf Rechnungen" hinweis="Vollständiger Name, z. B. „Erika Mustermann“ – damit Belege automatisch der Person zugeordnet werden. Mehrere Schreibweisen mit Komma trennen.">
+            <input value={p.namenAufRechnung ?? ''} onChange={(e) => setP({ ...p, namenAufRechnung: e.target.value || undefined })} />
+          </Feld>
           <Feld label="Gemeinsam versichert mit" hinweis="Einreichungen enthalten dann standardmäßig die Rechnungen beider">
             <select value={p.partnerId ?? ''} onChange={(e) => setP({ ...p, partnerId: e.target.value || undefined })}>
               <option value="">– niemand –</option>
