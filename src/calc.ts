@@ -4,9 +4,14 @@ import type { AppState, Einreichung, Kostentraeger, Leistungsart, Person, Rechnu
 /** Datenbasis für Berechnungen, die andere Rechnungen oder Einreichungen berücksichtigen. */
 export type Kontext = Pick<AppState, 'rechnungen' | 'einreichungen'>;
 
+/** Private Versicherung für eine Leistungsart: Krankheit → PKV, Pflege → PPV. */
+export function versicherungFuer(art: Leistungsart): 'pkv' | 'ppv' {
+  return art === 'krankheit' ? 'pkv' : 'ppv';
+}
+
 /** Welche Stellen sind für eine Leistungsart bei dieser Person zuständig? */
 export function traegerFuer(art: Leistungsart, person: Person): Kostentraeger[] {
-  const versicherung: Kostentraeger = art === 'krankheit' ? 'pkv' : 'ppv';
+  const versicherung = versicherungFuer(art);
   return person.beihilfe.berechtigt ? ['beihilfe', versicherung] : [versicherung];
 }
 
@@ -20,13 +25,19 @@ export function quote(person: Person, art: Leistungsart, kt: Kostentraeger): num
   return person.ppv.quote;
 }
 
-function pkvBrutto(r: Rechnung, person: Person): number {
-  return Math.round((r.betrag * quote(person, r.art, 'pkv')) / 100);
+/** Erstattung der privaten Versicherung vor Selbstbehalt. */
+function versicherungBrutto(r: Rechnung, person: Person): number {
+  return Math.round((r.betrag * quote(person, r.art, versicherungFuer(r.art))) / 100);
 }
 
-/** Unterliegt die Rechnung dem PKV-Selbstbehalt? (Krankheit, keine Vorsorge, Tarif mit Selbstbehalt) */
+/** Betrifft der Tarif (Selbstbehalt/BRE) diese Leistungsart? Pflege nur, wenn KV und PV gemeinsam zählen. */
+function tarifBetrifft(r: Rechnung, person: Person): boolean {
+  return !r.vorsorge && (r.art === 'krankheit' || person.pkv.mitPflege);
+}
+
+/** Unterliegt die Rechnung dem Selbstbehalt? (keine Vorsorge, Tarif mit Selbstbehalt) */
 function selbstbehaltPflichtig(r: Rechnung, person: Person): boolean {
-  return r.art === 'krankheit' && !r.vorsorge && person.pkv.selbstbehaltProzent > 0;
+  return person.pkv.selbstbehaltProzent > 0 && tarifBetrifft(r, person);
 }
 
 /**
@@ -38,7 +49,7 @@ function selbstbehaltVerteilen(liste: Rechnung[], person: Person): Map<string, n
   const sortiert = [...liste].sort((a, b) => a.datum.localeCompare(b.datum) || a.id.localeCompare(b.id));
   let verbraucht = 0;
   for (const r of sortiert) {
-    const sb = Math.min(Math.round((pkvBrutto(r, person) * person.pkv.selbstbehaltProzent) / 100), Math.max(0, person.pkv.selbstbehaltMax - verbraucht));
+    const sb = Math.min(Math.round((versicherungBrutto(r, person) * person.pkv.selbstbehaltProzent) / 100), Math.max(0, person.pkv.selbstbehaltMax - verbraucht));
     ergebnis.set(r.id, sb);
     verbraucht += sb;
   }
@@ -46,15 +57,15 @@ function selbstbehaltVerteilen(liste: Rechnung[], person: Person): Map<string, n
 }
 
 /**
- * Selbstbehalt, der voraussichtlich von der PKV-Erstattung dieser Rechnung abgezogen wird.
- * Berücksichtigt alle früheren Rechnungen desselben Jahres, die bei der PKV eingereicht werden.
+ * Selbstbehalt, der voraussichtlich von der Versicherungserstattung (PKV bzw. PPV) dieser Rechnung abgezogen wird.
+ * Berücksichtigt alle früheren Rechnungen desselben Jahres, die bei der Versicherung eingereicht werden.
  * `r` darf ein noch ungespeicherter Entwurf sein.
  */
 export function selbstbehalt(r: Rechnung, person: Person, rechnungen: Rechnung[]): number {
   if (!selbstbehaltPflichtig(r, person)) return 0;
   const jahr = r.datum.slice(0, 4);
   const liste = [...rechnungen.filter((x) => x.id !== r.id), r].filter(
-    (x) => x.personId === r.personId && x.datum.startsWith(jahr) && selbstbehaltPflichtig(x, person) && !x.nichtEinreichen.includes('pkv'),
+    (x) => x.personId === r.personId && x.datum.startsWith(jahr) && selbstbehaltPflichtig(x, person) && !x.nichtEinreichen.includes(versicherungFuer(x.art)),
   );
   if (!liste.includes(r)) liste.push(r);
   return selbstbehaltVerteilen(liste, person).get(r.id) ?? 0;
@@ -64,8 +75,14 @@ export function selbstbehalt(r: Rechnung, person: Person, rechnungen: Rechnung[]
 export function erwartet(r: Rechnung, person: Person, kt: Kostentraeger, rechnungen: Rechnung[]): number {
   const manuell = r.erwartetManuell[kt];
   if (manuell != null) return manuell;
-  if (kt === 'pkv') return pkvBrutto(r, person) - selbstbehalt(r, person, rechnungen);
+  if (kt === versicherungFuer(r.art)) return versicherungBrutto(r, person) - selbstbehalt(r, person, rechnungen);
   return Math.round((r.betrag * quote(person, r.art, kt)) / 100);
+}
+
+/** Erwartete Erstattung einer Rechnung; die Person wird aus dem Zustand ermittelt. */
+export function erwartetFuerRechnung(state: Pick<AppState, 'personen' | 'rechnungen'>, r: Rechnung, kt: Kostentraeger): number {
+  const person = state.personen.find((p) => p.id === r.personId);
+  return person ? erwartet(r, person, kt, state.rechnungen) : 0;
 }
 
 export type TraegerStatus = 'offen' | 'nicht_einreichen' | 'eingereicht' | 'erstattet' | 'abgelehnt';
@@ -164,12 +181,12 @@ export interface BreCheck {
   jahr: number;
   /** BRE bei Leistungsfreiheit in Cent. */
   bre: number;
-  /** Nicht-Vorsorge-Krankheitsrechnungen des Jahres. */
+  /** BRE-relevante Rechnungen des Jahres (ohne Vorsorge; Pflege nur bei gemeinsamem Tarif). */
   rechnungen: Rechnung[];
   betrag: number;
-  /** PKV-Erstattung (nach Selbstbehalt), wenn alle diese Rechnungen eingereicht würden. */
+  /** Versicherungserstattung (nach Selbstbehalt), wenn alle diese Rechnungen eingereicht würden. */
   erstattungBeiEinreichung: number;
-  /** Bereits bei der PKV eingereicht → BRE für dieses Jahr entfällt. */
+  /** Bereits bei der Versicherung eingereicht → BRE für dieses Jahr entfällt. */
   eingereicht: Rechnung[];
   /** Noch nicht eingereicht und nicht zurückgehalten. */
   offen: Rechnung[];
@@ -180,12 +197,12 @@ export interface BreCheck {
   vorteil: number;
 }
 
-/** BRE-relevant: Krankheitsrechnung ohne Vorsorge, die (anteilig) an die PKV gehen würde. */
-function breRelevant(r: Rechnung, person: Person): boolean {
-  return r.art === 'krankheit' && !r.vorsorge && quote(person, 'krankheit', 'pkv') > 0;
+/** BRE-relevant: Rechnung ohne Vorsorge, die (anteilig) an die private Versicherung des Tarifs gehen würde. */
+export function breRelevant(r: Rechnung, person: Person): boolean {
+  return person.pkv.bre > 0 && tarifBetrifft(r, person) && quote(person, r.art, versicherungFuer(r.art)) > 0;
 }
 
-/** Vergleicht für ein Jahr: alles bei der PKV einreichen oder zurückhalten und BRE erhalten? */
+/** Vergleicht für ein Jahr: alles bei der Versicherung einreichen oder zurückhalten und BRE erhalten? */
 export function breCheck(ctx: Kontext, person: Person, jahr: number): BreCheck | null {
   if (!person.pkv.bre) return null;
   const liste = ctx.rechnungen.filter((r) => r.personId === person.id && r.datum.startsWith(`${jahr}-`) && breRelevant(r, person));
@@ -195,10 +212,11 @@ export function breCheck(ctx: Kontext, person: Person, jahr: number): BreCheck |
   const offen: Rechnung[] = [];
   const zurueckgehalten: Rechnung[] = [];
   for (const r of liste) {
-    erstattung += r.erwartetManuell.pkv ?? pkvBrutto(r, person) - (sb.get(r.id) ?? 0);
-    const e = letzteEinreichung(r, 'pkv', ctx.einreichungen);
+    const kt = versicherungFuer(r.art);
+    erstattung += r.erwartetManuell[kt] ?? versicherungBrutto(r, person) - (sb.get(r.id) ?? 0);
+    const e = letzteEinreichung(r, kt, ctx.einreichungen);
     if (e) eingereicht.push(r);
-    else if (r.nichtEinreichen.includes('pkv')) zurueckgehalten.push(r);
+    else if (r.nichtEinreichen.includes(kt)) zurueckgehalten.push(r);
     else offen.push(r);
   }
   const einreichen = erstattung > person.pkv.bre;
@@ -219,7 +237,7 @@ export function breCheck(ctx: Kontext, person: Person, jahr: number): BreCheck |
 
 /** Soll eine neue Rechnung standardmäßig für die BRE zurückgehalten werden? */
 export function standardZurueckhalten(r: Rechnung, person: Person, ctx: Kontext): boolean {
-  if (!person.pkv.bre || !breRelevant(r, person)) return false;
+  if (!breRelevant(r, person)) return false;
   const check = breCheck(ctx, person, Number(r.datum.slice(0, 4)));
   // Wurde in diesem Jahr schon eingereicht, ist die BRE ohnehin verloren.
   return !check || check.eingereicht.length === 0;
@@ -297,7 +315,7 @@ export function hinweise(state: AppState, stichtag = heute()): Hinweis[] {
       const name = { beihilfe: 'Beihilfe', pkv: 'PKV', ppv: 'PPV' }[e.kostentraeger];
       liste.push({
         stufe: 'info',
-        personId: e.personId,
+        personId: e.personIds[0],
         einreichungId: e.id,
         text: `${name}-Einreichung vom ${e.eingereichtAm.split('-').reverse().join('.')} seit ${Math.floor(tage / 7)} Wochen ohne Bescheid – ggf. nachfragen`,
       });

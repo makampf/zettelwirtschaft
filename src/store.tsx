@@ -66,9 +66,25 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     return {
       state,
       personById: (id) => state.personen.find((p) => p.id === id),
-      speicherePerson: (p) => aendern((s) => ({ ...s, personen: upsert(s.personen, p) })),
+      speicherePerson: (p) =>
+        aendern((s) => ({
+          ...s,
+          // Partnerschaft beidseitig pflegen
+          personen: upsert(s.personen, p).map((x) => {
+            if (x.id === p.id) return x;
+            if (x.id === p.partnerId) return { ...x, partnerId: p.id };
+            if (x.partnerId === p.id) return { ...x, partnerId: undefined };
+            return x;
+          }),
+        })),
       loeschePerson: (id) =>
-        aendern((s) => ({ ...s, personen: s.personen.filter((p) => p.id !== id), einreichungen: s.einreichungen.filter((e) => e.personId !== id) })),
+        aendern((s) => ({
+          ...s,
+          personen: s.personen.filter((p) => p.id !== id).map((p) => (p.partnerId === id ? { ...p, partnerId: undefined } : p)),
+          einreichungen: s.einreichungen
+            .map((e) => ({ ...e, personIds: e.personIds.filter((x) => x !== id) }))
+            .filter((e) => e.personIds.length > 0),
+        })),
       speichereRechnung: (r) => aendern((s) => ({ ...s, rechnungen: upsert(s.rechnungen, r) })),
       loescheRechnung: async (id) => {
         const r = state.rechnungen.find((x) => x.id === id);

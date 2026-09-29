@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { breCheck, einreichbareRechnungen, erwartet, traegerFuer } from '../calc';
+import { breCheck, breRelevant, einreichbareRechnungen, erwartetFuerRechnung, traegerFuer, versicherungFuer } from '../calc';
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, useDateienSpeichern } from '../components/ui';
 import { datum, euro, heute, neueId } from '../format';
 import { useNav } from '../nav';
@@ -38,23 +38,23 @@ export default function Einreichungen() {
   const rechnungen = useMemo(() => new Map(state.rechnungen.map((r) => [r.id, r])), [state.rechnungen]);
 
   const zeilen = state.einreichungen
-    .filter((e) => !nav.personFilter || e.personId === nav.personFilter)
+    .filter((e) => !nav.personFilter || e.personIds.includes(nav.personFilter))
     .filter((e) => !statusFilter || e.status === statusFilter)
     .filter((e) => !ktFilter || e.kostentraeger === ktFilter)
     .sort((a, b) => b.eingereichtAm.localeCompare(a.eingereichtAm))
     .map((e) => {
-      const person = personById(e.personId);
+      const personen = e.personIds.map(personById).filter((p): p is Person => !!p);
       let summe = 0;
       let erw = 0;
       let erst = 0;
       for (const p of e.positionen) {
         const r = rechnungen.get(p.rechnungId);
-        if (!r || !person) continue;
+        if (!r) continue;
         summe += r.betrag;
-        erw += erwartet(r, person, e.kostentraeger, state.rechnungen);
+        erw += erwartetFuerRechnung(state, r, e.kostentraeger);
         erst += p.erstattet ?? 0;
       }
-      return { e, person, summe, erw, erst };
+      return { e, personen, summe, erw, erst };
     });
 
   return (
@@ -95,10 +95,10 @@ export default function Einreichungen() {
               </tr>
             </thead>
             <tbody>
-              {zeilen.map(({ e, person, summe, erw, erst }) => (
+              {zeilen.map(({ e, personen, summe, erw, erst }) => (
                 <tr key={e.id}>
                   <td>{datum(e.eingereichtAm)}<br /><small className="grau">{WEG_NAME[e.weg]}</small></td>
-                  <td><PersonChip person={person} /></td>
+                  <td><div className="chips">{personen.map((p) => <PersonChip key={p.id} person={p} />)}</div></td>
                   <td>{KT_KURZ[e.kostentraeger]}</td>
                   <td>{e.referenz || '–'}{e.dateiIds.length > 0 && ' 📎'}</td>
                   <td className="zahl">{e.positionen.length}</td>
@@ -147,7 +147,7 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
     () =>
       einreichung ?? {
         id: neueId(),
-        personId: personId || state.personen[0]?.id || '',
+        personIds: startPersonen(state.personen, personId),
         kostentraeger: kt ?? 'beihilfe',
         eingereichtAm: heute(),
         weg: 'app',
@@ -161,9 +161,13 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
   const [dateiIds, setDateiIds] = useState(e.dateiIds);
   const [neueDateien, setNeueDateien] = useState<File[]>([]);
   const set = <K extends keyof Einreichung>(k: K, v: Einreichung[K]) => setE((x) => ({ ...x, [k]: v }));
-  const person = personById(e.personId);
+  const person = personById(e.personIds[0]);
 
-  const kandidaten = useMemo(() => einreichbareRechnungen(state, e.personId, e.kostentraeger, e.id), [state, e.personId, e.kostentraeger, e.id]);
+  const kandidaten = useMemo(
+    () => e.personIds.flatMap((id) => einreichbareRechnungen(state, id, e.kostentraeger, e.id)).sort((a, b) => a.datum.localeCompare(b.datum)),
+    [state, e.personIds, e.kostentraeger, e.id],
+  );
+  const mehrerePersonen = e.personIds.length > 1;
   const gewaehlt = new Set(e.positionen.map((p) => p.rechnungId));
 
   // Neue Einreichung: standardmäßig alle offenen Rechnungen auswählen
@@ -183,17 +187,23 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
 
   // Welche Jahre verlieren durch diese PKV-Einreichung ihre Beitragsrückerstattung?
   const breVerlust = useMemo(() => {
-    if (e.kostentraeger !== 'pkv' || !person?.pkv.bre) return [];
+    if (e.kostentraeger === 'beihilfe') return [];
     const ohneDiese = { rechnungen: state.rechnungen, einreichungen: state.einreichungen.filter((x) => x.id !== e.id) };
-    const jahre = new Set(
-      kandidaten.filter((r) => gewaehlt.has(r.id) && r.art === 'krankheit' && !r.vorsorge).map((r) => Number(r.datum.slice(0, 4))),
-    );
-    return [...jahre].sort().map((j) => breCheck(ohneDiese, person, j)).filter((c) => c != null && c.eingereicht.length === 0);
+    const betroffen = new Map<string, Person>();
+    for (const r of kandidaten) {
+      const p = personById(r.personId);
+      if (!p || !gewaehlt.has(r.id) || versicherungFuer(r.art) !== e.kostentraeger || !breRelevant(r, p)) continue;
+      betroffen.set(`${p.id}|${r.datum.slice(0, 4)}`, p);
+    }
+    return [...betroffen]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([k, p]) => breCheck(ohneDiese, p, Number(k.split('|')[1])))
+      .filter((c) => c != null && c.eingereicht.length === 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [e.kostentraeger, e.id, e.positionen, person, state, kandidaten]);
 
   const summe = kandidaten.filter((r) => gewaehlt.has(r.id)).reduce((s, r) => s + r.betrag, 0);
-  const erw = person ? kandidaten.filter((r) => gewaehlt.has(r.id)).reduce((s, r) => s + erwartet(r, person, e.kostentraeger, state.rechnungen), 0) : 0;
+  const erw = kandidaten.filter((r) => gewaehlt.has(r.id)).reduce((s, r) => s + erwartetFuerRechnung(state, r, e.kostentraeger), 0);
 
   return (
     <Modal titel={einreichung ? 'Einreichung bearbeiten' : 'Neue Einreichung'} onClose={onClose} breit>
@@ -207,10 +217,28 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
         }}
       >
         <div className="raster">
-          <Feld label="Person">
-            <select value={e.personId} disabled={!!einreichung} onChange={(ev) => { set('personId', ev.target.value); setVorbelegt(false); }}>
-              {state.personen.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
+          <Feld label="Personen" gruppe hinweis="Gemeinsam Versicherte können zusammen eingereicht werden">
+            <div className="zeile">
+              {state.personen.map((p) => (
+                <label key={p.id} className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={e.personIds.includes(p.id)}
+                    onChange={(ev) => {
+                      const ids = ev.target.checked ? [...e.personIds, p.id] : e.personIds.filter((x) => x !== p.id);
+                      if (!ids.length) return;
+                      setE((x) => ({
+                        ...x,
+                        personIds: ids,
+                        positionen: x.positionen.filter((pos) => ids.includes(state.rechnungen.find((r) => r.id === pos.rechnungId)?.personId ?? '')),
+                      }));
+                      if (!einreichung) setVorbelegt(false);
+                    }}
+                  />
+                  {p.name}
+                </label>
+              ))}
+            </div>
           </Feld>
           <Feld label="Eingereicht bei">
             <select value={e.kostentraeger} disabled={!!einreichung} onChange={(ev) => { set('kostentraeger', ev.target.value as Kostentraeger); setVorbelegt(false); }}>
@@ -233,7 +261,7 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
         <fieldset>
           <legend>Enthaltene Rechnungen</legend>
           {kandidaten.length === 0 ? (
-            <Leer>Keine offenen Rechnungen für {person?.name} bei {KT_KURZ[e.kostentraeger]}.</Leer>
+            <Leer>Keine offenen Rechnungen für {e.personIds.map((id) => personById(id)?.name).join(' und ')} bei {KT_KURZ[e.kostentraeger]}.</Leer>
           ) : (
             <div className="tabelle-wrap">
               <table className="tabelle kompakt">
@@ -248,6 +276,7 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
                       />
                     </th>
                     <th>Datum</th>
+                    {mehrerePersonen && <th>Person</th>}
                     <th>Leistungserbringer</th>
                     <th>Art</th>
                     <th className="zahl">Betrag</th>
@@ -259,16 +288,17 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
                     <tr key={r.id} onClick={() => umschalten(r.id)} className="klickbar-zeile">
                       <td><input type="checkbox" checked={gewaehlt.has(r.id)} onChange={() => umschalten(r.id)} onClick={(ev) => ev.stopPropagation()} /></td>
                       <td>{datum(r.datum)}</td>
+                      {mehrerePersonen && <td><PersonChip person={personById(r.personId)} /></td>}
                       <td>{r.leistungserbringer}{r.beschreibung && <small className="grau"> · {r.beschreibung}</small>}</td>
                       <td>{ART_NAME[r.art]}</td>
                       <td className="zahl">{euro(r.betrag)}</td>
-                      <td className="zahl">{person && euro(erwartet(r, person, e.kostentraeger, state.rechnungen))}</td>
+                      <td className="zahl">{euro(erwartetFuerRechnung(state, r, e.kostentraeger))}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={4}>{e.positionen.length} ausgewählt</td>
+                    <td colSpan={mehrerePersonen ? 5 : 4}>{e.positionen.length} ausgewählt</td>
                     <td className="zahl">{euro(summe)}</td>
                     <td className="zahl">{euro(erw)}</td>
                   </tr>
@@ -316,15 +346,30 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
   );
 }
 
+/** Vorauswahl der Personen einer neuen Einreichung: gewählte Person plus gemeinsam versicherter Partner. */
+function startPersonen(personen: Person[], personId?: string): string[] {
+  const p = personen.find((x) => x.id === personId) ?? personen[0];
+  if (!p) return [];
+  return p.partnerId && personen.some((x) => x.id === p.partnerId) ? [p.id, p.partnerId] : [p.id];
+}
+
+function nummerBei(p: Person, kt: Kostentraeger): string {
+  return kt === 'beihilfe' ? p.beihilfe.aktenzeichen : kt === 'pkv' ? p.pkv.nummer : p.ppv.nummer;
+}
+
+function namen(personen: (Person | undefined)[]): string {
+  return personen.filter(Boolean).map((p) => p!.name).join(' und ');
+}
+
 function traegerName(p: Person, kt: Kostentraeger): string {
-  const n = kt === 'beihilfe' ? p.beihilfe.stelle : kt === 'pkv' ? p.pkv.name : p.ppv.name;
+  const n = kt === 'beihilfe' ? p.beihilfe.stelle : kt === 'pkv' ? [p.pkv.name, p.pkv.tarif].filter(Boolean).join(', ') : [p.ppv.name, p.ppv.tarif].filter(Boolean).join(', ');
   return n ? ` (${n})` : '';
 }
 
 function BescheidFormular({ einreichung, onClose }: { einreichung: Einreichung; onClose: () => void }) {
   const { state, personById, speichereEinreichung } = useStore();
   const dateienSpeichern = useDateienSpeichern();
-  const person = personById(einreichung.personId);
+  const personen = einreichung.personIds.map(personById);
   const [e, setE] = useState(einreichung);
   const [dateiIds, setDateiIds] = useState(e.dateiIds);
   const [neueDateien, setNeueDateien] = useState<File[]>([]);
@@ -334,10 +379,10 @@ function BescheidFormular({ einreichung, onClose }: { einreichung: Einreichung; 
     setE((x) => ({ ...x, positionen: x.positionen.map((p) => (p.rechnungId === id ? { ...p, ...teil } : p)) }));
 
   const summe = e.positionen.reduce((s, p) => s + (p.erstattet ?? 0), 0);
-  const erw = person ? rechnungen.reduce((s, { r }) => s + erwartet(r, person, e.kostentraeger, state.rechnungen), 0) : 0;
+  const erw = rechnungen.reduce((s, { r }) => s + erwartetFuerRechnung(state, r, e.kostentraeger), 0);
 
   return (
-    <Modal titel={`Bescheid – ${KT_NAME[e.kostentraeger]} – ${person?.name ?? ''}`} onClose={onClose} breit>
+    <Modal titel={`Bescheid – ${KT_NAME[e.kostentraeger]} – ${namen(personen)}`} onClose={onClose} breit>
       <form
         onSubmit={async (ev) => {
           ev.preventDefault();
@@ -359,9 +404,9 @@ function BescheidFormular({ einreichung, onClose }: { einreichung: Einreichung; 
           <button
             type="button"
             className="klein"
-            onClick={() => person && setE((x) => ({ ...x, positionen: x.positionen.map((p) => {
+            onClick={() => setE((x) => ({ ...x, positionen: x.positionen.map((p) => {
               const r = rechnungen.find((y) => y.r.id === p.rechnungId)?.r;
-              return r ? { ...p, erstattet: erwartet(r, person, x.kostentraeger, state.rechnungen) } : p;
+              return r ? { ...p, erstattet: erwartetFuerRechnung(state, r, x.kostentraeger) } : p;
             }) }))}
           >
             Alle wie erwartet übernehmen
@@ -382,9 +427,9 @@ function BescheidFormular({ einreichung, onClose }: { einreichung: Einreichung; 
             <tbody>
               {rechnungen.map(({ p, r }) => (
                 <tr key={r.id}>
-                  <td>{datum(r.datum)} · {r.leistungserbringer}</td>
+                  <td>{datum(r.datum)} · {r.leistungserbringer}{personen.length > 1 && <> · {personById(r.personId)?.name}</>}</td>
                   <td className="zahl">{euro(r.betrag)}</td>
-                  <td className="zahl">{person && euro(erwartet(r, person, e.kostentraeger, state.rechnungen))}</td>
+                  <td className="zahl">{euro(erwartetFuerRechnung(state, r, e.kostentraeger))}</td>
                   <td><BetragFeld wert={p.erstattet} onChange={(c) => setPos(r.id, { erstattet: c })} /></td>
                   <td><input value={p.bemerkung ?? ''} onChange={(ev) => setPos(r.id, { bemerkung: ev.target.value })} /></td>
                 </tr>
@@ -430,18 +475,22 @@ function BescheidFormular({ einreichung, onClose }: { einreichung: Einreichung; 
 
 function Belegliste({ einreichung: e, onClose }: { einreichung: Einreichung; onClose: () => void }) {
   const { state, personById } = useStore();
-  const person = personById(e.personId);
+  const personen = e.personIds.map(personById).filter((p): p is Person => !!p);
+  const mehrere = personen.length > 1;
   const rs = e.positionen.map((p) => state.rechnungen.find((r) => r.id === p.rechnungId)).filter((r): r is Rechnung => !!r).sort((a, b) => a.datum.localeCompare(b.datum));
-  const nummer = person && (e.kostentraeger === 'beihilfe' ? person.beihilfe.aktenzeichen : e.kostentraeger === 'pkv' ? person.pkv.nummer : person.ppv.nummer);
   return (
     <Modal titel="Belegliste" onClose={onClose} breit>
       <div className="druck">
         <h2>Belegaufstellung – {KT_NAME[e.kostentraeger]}</h2>
         <p>
-          <strong>{person?.name}</strong>
-          {person && traegerName(person, e.kostentraeger)}
-          {nummer && <> · {e.kostentraeger === 'beihilfe' ? 'Aktenzeichen' : 'Versicherungsnummer'} {nummer}</>}
-          <br />
+          {personen.map((p) => (
+            <span key={p.id}>
+              <strong>{p.name}</strong>
+              {traegerName(p, e.kostentraeger)}
+              {nummerBei(p, e.kostentraeger) && <> · {e.kostentraeger === 'beihilfe' ? 'Aktenzeichen' : 'Versicherungsnummer'} {nummerBei(p, e.kostentraeger)}</>}
+              <br />
+            </span>
+          ))}
           Eingereicht am {datum(e.eingereichtAm)}{e.referenz && ` · Vorgang ${e.referenz}`}
         </p>
         <table className="tabelle kompakt">
@@ -449,6 +498,7 @@ function Belegliste({ einreichung: e, onClose }: { einreichung: Einreichung; onC
             <tr>
               <th>Nr.</th>
               <th>Rechnungsdatum</th>
+              {mehrere && <th>Person</th>}
               <th>Leistungserbringer</th>
               <th>Rechnungs-Nr.</th>
               <th>Art</th>
@@ -460,6 +510,7 @@ function Belegliste({ einreichung: e, onClose }: { einreichung: Einreichung; onC
               <tr key={r.id}>
                 <td>{i + 1}</td>
                 <td>{datum(r.datum)}</td>
+                {mehrere && <td>{personById(r.personId)?.name}</td>}
                 <td>{r.leistungserbringer}{r.beschreibung && ` – ${r.beschreibung}`}</td>
                 <td>{r.rechnungsnummer}</td>
                 <td>{ART_NAME[r.art]}</td>
@@ -469,12 +520,12 @@ function Belegliste({ einreichung: e, onClose }: { einreichung: Einreichung; onC
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={5}>Summe ({rs.length} Belege)</td>
+              <td colSpan={mehrere ? 6 : 5}>Summe ({rs.length} Belege)</td>
               <td className="zahl">{euro(rs.reduce((s, r) => s + r.betrag, 0))}</td>
             </tr>
           </tfoot>
         </table>
-        {person && rs.some((r) => !traegerFuer(r.art, person).includes(e.kostentraeger)) && <p className="rot">Achtung: enthält Rechnungen, die nicht zu diesem Kostenträger passen.</p>}
+        {rs.some((r) => { const p = personById(r.personId); return !p || !traegerFuer(r.art, p).includes(e.kostentraeger); }) && <p className="rot">Achtung: enthält Rechnungen, die nicht zu diesem Kostenträger passen.</p>}
       </div>
       <div className="aktionen">
         <span className="abstand" />

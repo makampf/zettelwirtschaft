@@ -34,12 +34,16 @@ export default function Personen() {
               )}
               <dt>Krankenversicherung</dt>
               <dd>
-                {p.pkv.name || <span className="grau">nicht angegeben</span>} · {p.pkv.quote} %{p.pkv.nummer && <><br />Nr. {p.pkv.nummer}</>}
-                {p.pkv.selbstbehaltProzent > 0 && <><br />Selbstbehalt {p.pkv.selbstbehaltProzent} %, max. {euro(p.pkv.selbstbehaltMax)}/Jahr</>}
+                {p.pkv.name || <span className="grau">nicht angegeben</span>}{p.pkv.tarif && <>, Tarif {p.pkv.tarif}</>} · {p.pkv.quote} %
+                {p.pkv.nummer && <><br />Nr. {p.pkv.nummer}</>}
+                {p.pkv.selbstbehaltProzent > 0 && (
+                  <><br />Selbstbehalt {p.pkv.selbstbehaltProzent} %, max. {euro(p.pkv.selbstbehaltMax)}/Jahr{p.pkv.mitPflege && ' (KV + PV gemeinsam)'}</>
+                )}
                 {p.pkv.bre > 0 && <><br />Beitragsrückerstattung ca. {euro(p.pkv.bre)}/Jahr</>}
               </dd>
               <dt>Pflegeversicherung</dt>
-              <dd>{p.ppv.name || <span className="grau">nicht angegeben</span>} · {p.ppv.quote} %{p.ppv.nummer && <><br />Nr. {p.ppv.nummer}</>}</dd>
+              <dd>{p.ppv.name || <span className="grau">nicht angegeben</span>}{p.ppv.tarif && <>, Tarif {p.ppv.tarif}</>} · {p.ppv.quote} %{p.ppv.nummer && <><br />Nr. {p.ppv.nummer}</>}</dd>
+              {p.partnerId && <><dt>Gemeinsam versichert</dt><dd>mit {state.personen.find((x) => x.id === p.partnerId)?.name}</dd></>}
               {p.notiz && <><dt>Notiz</dt><dd>{p.notiz}</dd></>}
             </dl>
             <button onClick={() => setBearbeiten(p)}>Bearbeiten</button>
@@ -72,6 +76,12 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
         <div className="raster">
           <Feld label="Name">
             <input value={p.name} onChange={(e) => setP({ ...p, name: e.target.value })} required autoFocus />
+          </Feld>
+          <Feld label="Gemeinsam versichert mit" hinweis="Einreichungen enthalten dann standardmäßig die Rechnungen beider">
+            <select value={p.partnerId ?? ''} onChange={(e) => setP({ ...p, partnerId: e.target.value || undefined })}>
+              <option value="">– niemand –</option>
+              {state.personen.filter((x) => x.id !== p.id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+            </select>
           </Feld>
           <Feld label="Farbe" gruppe>
             <div className="farben">
@@ -127,6 +137,9 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
             <Feld label="Versicherer">
               <input value={p.pkv.name} onChange={(e) => pkv({ name: e.target.value })} />
             </Feld>
+            <Feld label="Tarif">
+              <input value={p.pkv.tarif} onChange={(e) => pkv({ tarif: e.target.value })} />
+            </Feld>
             <Feld label="Versicherungsnummer">
               <input value={p.pkv.nummer} onChange={(e) => pkv({ nummer: e.target.value })} />
             </Feld>
@@ -141,6 +154,14 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
                 <BetragFeld wert={p.pkv.selbstbehaltMax} onChange={(c) => pkv({ selbstbehaltMax: c ?? 0 })} />
               </Feld>
             )}
+            {(p.pkv.selbstbehaltProzent > 0 || p.pkv.bre > 0) && (
+              <Feld label="Gilt auch für Pflege" hinweis="Pflegerechnungen zählen zum selben Selbstbehalt und zur Beitragsrückerstattung">
+                <label className="checkbox">
+                  <input type="checkbox" checked={p.pkv.mitPflege} onChange={(e) => pkv({ mitPflege: e.target.checked })} />
+                  Selbstbehalt/BRE für KV + PV gemeinsam
+                </label>
+              </Feld>
+            )}
             <Feld label="Beitragsrückerstattung pro Jahr" hinweis="Bei Leistungsfreiheit (außer Vorsorge). Leer = keine">
               <BetragFeld wert={p.pkv.bre || undefined} onChange={(c) => pkv({ bre: c ?? 0 })} />
             </Feld>
@@ -152,6 +173,9 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
           <div className="raster">
             <Feld label="Versicherer">
               <input value={p.ppv.name} onChange={(e) => ppv({ name: e.target.value })} />
+            </Feld>
+            <Feld label="Tarif">
+              <input value={p.ppv.tarif} onChange={(e) => ppv({ tarif: e.target.value })} />
             </Feld>
             <Feld label="Versicherungsnummer">
               <input value={p.ppv.nummer} onChange={(e) => ppv({ nummer: e.target.value })} />

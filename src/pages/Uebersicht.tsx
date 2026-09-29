@@ -1,4 +1,4 @@
-import { breCheck, hinweise, rechnungUebersicht, traegerFuer, type BreCheck } from '../calc';
+import { breCheck, hinweise, rechnungUebersicht, traegerFuer, versicherungFuer, type BreCheck } from '../calc';
 import { Leer, PersonChip } from '../components/ui';
 import { euro } from '../format';
 import { useNav } from '../nav';
@@ -146,8 +146,9 @@ function BreBox({ check: c, laufend }: { check: BreCheck; laufend: boolean }) {
   const { speichereRechnung } = useStore();
   const setzen = (liste: Rechnung[], halten: boolean) => {
     for (const r of liste) {
-      const ohne = r.nichtEinreichen.filter((k) => k !== 'pkv');
-      speichereRechnung({ ...r, nichtEinreichen: halten ? [...ohne, 'pkv'] : ohne });
+      const kt = versicherungFuer(r.art);
+      const ohne = r.nichtEinreichen.filter((k) => k !== kt);
+      speichereRechnung({ ...r, nichtEinreichen: halten ? [...ohne, kt] : ohne });
     }
   };
 
@@ -155,7 +156,7 @@ function BreBox({ check: c, laufend }: { check: BreCheck; laufend: boolean }) {
     return (
       <div className="bre">
         <h3>Beitragsrückerstattung {c.jahr}</h3>
-        <p className="grau">Entfällt – bereits {c.eingereicht.length} Rechnung(en) bei der PKV eingereicht.</p>
+        <p className="grau">Entfällt – bereits {c.eingereicht.length} Rechnung(en) bei der Versicherung eingereicht.</p>
       </div>
     );
   }

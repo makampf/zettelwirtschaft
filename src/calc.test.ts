@@ -35,15 +35,16 @@ function rechnung(teil: Partial<Rechnung> & { personId: string }): Rechnung {
   };
 }
 
-function einreichung(teil: Partial<Einreichung> & Pick<Einreichung, 'personId' | 'kostentraeger' | 'positionen'>): Einreichung {
-  return { id: Math.random().toString(36).slice(2), eingereichtAm: '2026-03-10', weg: 'app', referenz: '', status: 'eingereicht', dateiIds: [], notiz: '', ...teil };
+function einreichung(teil: Partial<Einreichung> & { personId: string } & Pick<Einreichung, 'kostentraeger' | 'positionen'>): Einreichung {
+  const { personId, ...rest } = teil;
+  return { id: Math.random().toString(36).slice(2), personIds: [personId], eingereichtAm: '2026-03-10', weg: 'app', referenz: '', status: 'eingereicht', dateiIds: [], notiz: '', ...rest };
 }
 
-/** Standarddaten: „Ich“ ohne Beihilfe (100 % PKV, 20 % SB bis 400 €, BRE 1.000 €), Oma/Opa mit 70 % Beihilfe. */
+/** Standarddaten: „Ich“ ohne Beihilfe (100 % PKV/PPV, 20 % SB bis 400 € für KV + PV, BRE 1.000 €), Oma/Opa mit 70 % Beihilfe + Tarif B. */
 function setup() {
   const state: AppState = startState();
-  const [ich, oma] = state.personen;
-  return { state, ich, oma };
+  const [ich, oma, opa] = state.personen;
+  return { state, ich, oma, opa };
 }
 
 describe('parseEuro', () => {
@@ -168,6 +169,23 @@ describe('Selbstbehalt', () => {
     expect(selbstbehalt(r, ich, alle)).toBe(2000);
   });
 
+  it('Kranken- und Pflegerechnungen teilen sich den Selbstbehalt', () => {
+    const { ich } = setup();
+    const pflege = rechnung({ personId: ich.id, art: 'pflege', datum: '2026-01-10', betrag: 150000 }); // SB 300 €
+    const kv = rechnung({ personId: ich.id, datum: '2026-02-10', betrag: 100000 }); // SB nur noch 100 €
+    const alle = [pflege, kv];
+    expect(erwartet(pflege, ich, 'ppv', alle)).toBe(120000);
+    expect(selbstbehalt(kv, ich, alle)).toBe(10000);
+    expect(erwartet(kv, ich, 'pkv', alle)).toBe(90000);
+  });
+
+  it('Pflege ohne gemeinsamen Tarif bleibt ohne Selbstbehalt', () => {
+    const { ich } = setup();
+    const getrennt = { ...ich, pkv: { ...ich.pkv, mitPflege: false } };
+    const pflege = rechnung({ personId: ich.id, art: 'pflege', betrag: 100000 });
+    expect(erwartet(pflege, getrennt, 'ppv', [pflege])).toBe(100000);
+  });
+
   it('gilt nicht, wenn der Tarif keinen Selbstbehalt hat', () => {
     const { oma } = setup();
     const r = rechnung({ personId: oma.id, betrag: 10000 });
@@ -206,6 +224,19 @@ describe('Beitragsrückerstattung', () => {
     state.einreichungen.push(einreichung({ personId: ich.id, kostentraeger: 'pkv', positionen: [{ rechnungId: r.id }] }));
     expect(breCheck(state, ich, 2026)!.eingereicht).toHaveLength(1);
     expect(standardZurueckhalten(rechnung({ personId: ich.id, datum: '2026-05-01' }), ich, state)).toBe(false);
+  });
+
+  it('berücksichtigt Pflegerechnungen bei gemeinsamem Tarif', () => {
+    const { state, ich } = setup();
+    state.rechnungen.push(
+      rechnung({ personId: ich.id, art: 'pflege', datum: '2026-02-01', betrag: 50000 }), // 500 € − 100 € SB = 400 €
+      rechnung({ personId: ich.id, datum: '2026-03-01', betrag: 80000 }), // 800 € − 160 € SB = 640 €
+    );
+    const c = breCheck(state, ich, 2026)!;
+    expect(c.rechnungen).toHaveLength(2);
+    expect(c.erstattungBeiEinreichung).toBe(104000);
+    expect(c.empfehlung).toBe('einreichen');
+    expect(standardZurueckhalten(rechnung({ personId: ich.id, art: 'pflege' }), ich, state)).toBe(true);
   });
 
   it('hält Vorsorge und Personen ohne BRE nicht zurück', () => {
@@ -278,27 +309,55 @@ describe('Migration', () => {
     });
     return {
       version: 1,
-      personen: [p('Ich', 50), p('Oma', 70)],
+      personen: [p('Ich', 50), p('Oma', 70), p('Opa', 70)],
       rechnungen: [{ id: 'x', personId: 'Oma', art: 'krankheit', datum: '2026-01-01', betrag: 100, nichtEinreichen: [], erwartetManuell: {}, dateiIds: [] }],
-      einreichungen: [],
+      einreichungen: [{ id: 'e', personId: 'Oma', kostentraeger: 'beihilfe', eingereichtAm: '2026-01-02', weg: 'app', referenz: '', status: 'eingereicht', positionen: [{ rechnungId: 'x' }], dateiIds: [], notiz: '' }],
       dateien: [],
     };
   }
 
-  it('ergänzt neue Felder und setzt „Ich“ mit Standardwerten auf reine PKV', () => {
+  it('bringt Version 1 auf den aktuellen Stand', () => {
     const s = migriere(v1());
-    expect(s.version).toBe(2);
-    const [ich, oma] = s.personen;
+    expect(s.version).toBe(3);
+    const [ich, oma, opa] = s.personen;
     expect(ich.beihilfe.berechtigt).toBe(false);
-    expect(ich.pkv).toMatchObject({ quote: 100, selbstbehaltProzent: 20, selbstbehaltMax: 40000, bre: 100000 });
+    expect(ich.pkv).toMatchObject({ name: 'Musterversicherung', tarif: 'Komforttarif', quote: 100, selbstbehaltProzent: 20, selbstbehaltMax: 40000, bre: 100000, mitPflege: true });
     expect(oma.beihilfe.berechtigt).toBe(true);
-    expect(oma.pkv).toMatchObject({ quote: 30, selbstbehaltProzent: 0, bre: 0 });
+    expect(oma.pkv).toMatchObject({ name: 'Musterversicherung', tarif: 'Tarif B', quote: 30, selbstbehaltProzent: 0, bre: 0, mitPflege: false });
+    expect(oma.partnerId).toBe(opa.id);
+    expect(opa.partnerId).toBe(oma.id);
     expect(s.rechnungen[0].vorsorge).toBe(false);
+    expect(s.einreichungen[0].personIds).toEqual(['Oma']);
+    expect('personId' in s.einreichungen[0]).toBe(false);
   });
 
-  it('lässt angepasste Daten von „Ich“ unverändert', () => {
+  it('lässt angepasste Daten unverändert', () => {
     const alt = v1();
     alt.personen[0].beihilfe.stelle = 'Bundesverwaltungsamt';
-    expect(migriere(alt).personen[0].beihilfe.berechtigt).toBe(true);
+    alt.personen[1].pkv.name = 'Andere Versicherung';
+    const s = migriere(alt);
+    expect(s.personen[0].beihilfe.berechtigt).toBe(true);
+    expect(s.personen[0].pkv.tarif).toBe('');
+    expect(s.personen[1].pkv.name).toBe('Andere Versicherung');
+  });
+
+  it('übernimmt Version 2 mit angepasstem „Ich“', () => {
+    const v2 = migriere(v1()) as unknown as Record<string, unknown>;
+    // Stand wie nach dem letzten Update: v2 ohne Tarif/Partner, Einreichungen mit personId
+    const alt = JSON.parse(JSON.stringify(v2));
+    alt.version = 2;
+    for (const p of alt.personen) { delete p.pkv.tarif; delete p.pkv.mitPflege; delete p.ppv.tarif; delete p.partnerId; p.pkv.name = ''; }
+    for (const e of alt.einreichungen) { e.personId = e.personIds[0]; delete e.personIds; }
+    const s = migriere(alt);
+    expect(s.personen[0].pkv.mitPflege).toBe(true);
+    expect(s.personen[0].pkv.name).toBe('Musterversicherung');
+    expect(s.personen[1].partnerId).toBe(s.personen[2].id);
+    expect(s.einreichungen[0].personIds).toEqual(['Oma']);
+  });
+
+  it('Startdaten verknüpfen Oma und Opa', () => {
+    const { oma, opa } = setup();
+    expect(oma.partnerId).toBe(opa.id);
+    expect(opa.partnerId).toBe(oma.id);
   });
 });

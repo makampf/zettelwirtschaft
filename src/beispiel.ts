@@ -1,6 +1,8 @@
 import { neueId } from './format';
 import type { AppState, Person } from './types';
 
+export const VERSICHERER = 'Musterversicherung';
+
 export function neuePerson(name: string, farbe: string, beihilfeSatz: number | null): Person {
   const satz = beihilfeSatz ?? 0;
   return {
@@ -8,27 +10,45 @@ export function neuePerson(name: string, farbe: string, beihilfeSatz: number | n
     name,
     farbe,
     beihilfe: { berechtigt: beihilfeSatz != null, stelle: '', aktenzeichen: '', satzKrankheit: satz, satzPflege: satz, fristMonate: 12 },
-    pkv: { name: '', nummer: '', quote: 100 - satz, selbstbehaltProzent: 0, selbstbehaltMax: 0, bre: 0 },
-    ppv: { name: '', nummer: '', quote: 100 - satz },
+    pkv: { name: '', tarif: '', nummer: '', quote: 100 - satz, selbstbehaltProzent: 0, selbstbehaltMax: 0, bre: 0, mitPflege: false },
+    ppv: { name: '', tarif: '', nummer: '', quote: 100 - satz },
     notiz: '',
   };
 }
 
-/** Standardwerte für mich: nicht beihilfeberechtigt, 100 % PKV mit 20 % Selbstbehalt (max. 400 €/Jahr) und BRE. */
+/** Standardwerte für mich: nicht beihilfeberechtigt, Komforttarif (20 % SB bis 400 €/Jahr für KV + PV, BRE). */
 export function eigeneStandardwerte(p: Person): Person {
   return {
     ...p,
     beihilfe: { ...p.beihilfe, berechtigt: false, satzKrankheit: 0, satzPflege: 0 },
-    pkv: { ...p.pkv, quote: 100, selbstbehaltProzent: 20, selbstbehaltMax: 40000, bre: 100000 },
-    ppv: { ...p.ppv, quote: 100 },
+    pkv: {
+      ...p.pkv,
+      name: p.pkv.name || VERSICHERER,
+      tarif: p.pkv.tarif || 'Komforttarif',
+      quote: 100,
+      selbstbehaltProzent: 20,
+      selbstbehaltMax: 40000,
+      bre: 100000,
+      mitPflege: true,
+    },
+    ppv: { ...p.ppv, name: p.ppv.name || VERSICHERER, quote: 100 },
   };
 }
 
-/** Startzustand: ich selbst (nur PKV) und die Großeltern als Versorgungsempfänger (70 % Beihilfe). */
+/** Standardwerte für die Großeltern: Beihilfe + Tarif B. */
+export function grosselternStandardwerte(p: Person): Person {
+  return { ...p, pkv: { ...p.pkv, name: p.pkv.name || VERSICHERER, tarif: p.pkv.tarif || 'Tarif B' }, ppv: { ...p.ppv, name: p.ppv.name || VERSICHERER } };
+}
+
+/** Startzustand: ich selbst (nur PKV) und die gemeinsam versicherten Großeltern (70 % Beihilfe + Tarif B). */
 export function startState(): AppState {
+  const oma = grosselternStandardwerte(neuePerson('Oma', '#db2777', 70));
+  const opa = grosselternStandardwerte(neuePerson('Opa', '#059669', 70));
+  oma.partnerId = opa.id;
+  opa.partnerId = oma.id;
   return {
-    version: 2,
-    personen: [eigeneStandardwerte(neuePerson('Ich', '#2563eb', null)), neuePerson('Oma', '#db2777', 70), neuePerson('Opa', '#059669', 70)],
+    version: 3,
+    personen: [eigeneStandardwerte(neuePerson('Ich', '#2563eb', null)), oma, opa],
     rechnungen: [],
     einreichungen: [],
     dateien: [],

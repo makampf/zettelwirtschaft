@@ -9,7 +9,9 @@ Alle Daten bleiben **lokal im Browser** (IndexedDB). Es gibt keinen Server, kein
 ## Funktionen
 
 - **Personen** mit oder ohne Beihilfeberechtigung (Beihilfestelle, Bemessungssätze getrennt für Krankheit/Pflege, Antragsfrist)
-  sowie PKV/PPV mit Erstattungsquote, **Selbstbehalt** (z. B. 20 % der Erstattung, max. 400 €/Jahr) und **Beitragsrückerstattung**
+  sowie PKV/PPV mit Versicherer, Tarif und Erstattungsquote, **Selbstbehalt** (z. B. 20 % der Erstattung, max. 400 €/Jahr –
+  wahlweise gemeinsam für Kranken- und Pflegeversicherung) und **Beitragsrückerstattung**
+- **Gemeinsam versicherte Personen** (z. B. Großeltern): Einreichungen und Belegliste enthalten die Rechnungen beider
 - **Rechnungen** erfassen (Krankheit oder Pflege) inkl. Belegen als PDF/Foto, Zahlungsziel und Bezahlt-Datum
   - erwartete Erstattung wird aus den Quoten berechnet und kann pro Rechnung überschrieben werden (z. B. bei Pflege-Höchstbeträgen)
   - **Vorsorgeuntersuchungen** markieren: ohne Selbstbehalt und unschädlich für die Beitragsrückerstattung
@@ -17,7 +19,7 @@ Alle Daten bleiben **lokal im Browser** (IndexedDB). Es gibt keinen Server, kein
 - **Beitragsrückerstattung (BRE)**: Neue Rechnungen werden bei der PKV zunächst zurückgehalten. Die Übersicht vergleicht je Jahr
   die mögliche Erstattung (nach Selbstbehalt) mit der BRE und empfiehlt *einreichen* oder *zurückhalten* – mit einem Klick umsetzbar.
   Beim Anlegen einer PKV-Einreichung warnt die App, wenn dadurch die BRE eines Jahres entfällt.
-- **Einreichungen**: offene Rechnungen je Person und Stelle bündeln, Antragsnummer und Weg (App, Post …) festhalten,
+- **Einreichungen**: offene Rechnungen je Stelle bündeln – auch für mehrere Personen gemeinsam – Antragsnummer und Weg (App, Post …) festhalten,
   Belegliste zum Beilegen drucken
 - **Bescheide** erfassen: tatsächlich erstattete Beträge und Kürzungsgründe je Rechnung; abgelehnte Rechnungen können erneut eingereicht werden
 - **Übersicht** je Person: was ist noch zu bezahlen, was noch einzureichen, welche Erstattungen stehen aus, Eigenanteil im Jahr

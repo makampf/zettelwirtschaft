@@ -159,9 +159,10 @@ legend { font-weight: 600; padding: 0 0.35rem; }
 .kt-liste li { display: flex; justify-content: space-between; align-items: center; padding: 0.3rem 0; border-bottom: 1px solid var(--rand); gap: 0.5rem; }
 .kt-liste li:last-child { border-bottom: none; }
 .fuss { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; padding-top: 0.6rem; border-top: 1px solid var(--rand); font-size: 0.88rem; }
-.daten-liste { display: grid; grid-template-columns: auto 1fr; gap: 0.35rem 0.75rem; margin: 0 0 1rem; font-size: 0.9rem; }
-.daten-liste dt { color: var(--grau); }
-.daten-liste dd { margin: 0; }
+.daten-liste { display: flex; flex-direction: column; gap: 0.15rem; margin: 0 0 1rem; font-size: 0.9rem; }
+.daten-liste dt { color: var(--grau); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 0.5rem; }
+.daten-liste dt:first-child { margin-top: 0; }
+.daten-liste dd { margin: 0; overflow-wrap: anywhere; }
 .farben { display: flex; gap: 0.4rem; }
 .farbe { width: 1.8rem; height: 1.8rem; border-radius: 50%; padding: 0; border: 2px solid transparent; }
 .farbe.aktiv { border-color: var(--text); }
@@ -211,3 +212,4 @@ legend { font-weight: 600; padding: 0 0.35rem; }
 .bre.einreichen { background: var(--blau-bg); }
 .bre .kt-liste li { border-color: rgb(0 0 0 / 0.08); font-size: 0.9rem; }
 .badge.tag { margin-left: 0.4rem; background: var(--gruen-bg); color: var(--gruen); }
+.chips { display: flex; flex-direction: column; gap: 0.15rem; }

@@ -37,6 +37,8 @@ export interface Person {
   id: string;
   name: string;
   farbe: string;
+  /** Gemeinsam versicherte Person (z. B. Ehepartner): Einreichungen enthalten standardmäßig beide. */
+  partnerId?: string;
   beihilfe: {
     /** Ohne Beihilfeberechtigung gehen Rechnungen nur an PKV bzw. PPV. */
     berechtigt: boolean;
@@ -51,6 +53,7 @@ export interface Person {
   };
   pkv: {
     name: string;
+    tarif: string;
     nummer: string;
     /** Erstattungsquote in Prozent. */
     quote: number;
@@ -60,8 +63,10 @@ export interface Person {
     selbstbehaltMax: number;
     /** Beitragsrückerstattung pro leistungsfreiem Jahr in Cent (0 = keine). */
     bre: number;
+    /** Selbstbehalt und BRE gelten gemeinsam für Kranken- und Pflegeversicherung. */
+    mitPflege: boolean;
   };
-  ppv: { name: string; nummer: string; /** Erstattungsquote in Prozent. */ quote: number };
+  ppv: { name: string; tarif: string; nummer: string; /** Erstattungsquote in Prozent. */ quote: number };
   notiz: string;
 }
 
@@ -106,7 +111,8 @@ export type EinreichungStatus = 'eingereicht' | 'beschieden';
 
 export interface Einreichung {
   id: string;
-  personId: string;
+  /** Personen, deren Rechnungen enthalten sind (bei gemeinsamer Versicherung mehrere). */
+  personIds: string[];
   kostentraeger: Kostentraeger;
   eingereichtAm: string;
   weg: Einreichungsweg;
@@ -122,7 +128,7 @@ export interface Einreichung {
 }
 
 export interface AppState {
-  version: 2;
+  version: 3;
   personen: Person[];
   rechnungen: Rechnung[];
   einreichungen: Einreichung[];

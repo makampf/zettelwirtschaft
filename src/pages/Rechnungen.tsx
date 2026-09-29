@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { beihilfeFristEnde, erwartet, quote, rechnungUebersicht, selbstbehalt, standardZurueckhalten, traegerFuer, traegerInfo } from '../calc';
+import { beihilfeFristEnde, breRelevant, erwartet, quote, rechnungUebersicht, selbstbehalt, standardZurueckhalten, traegerFuer, traegerInfo, versicherungFuer } from '../calc';
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, StatusBadge, useDateienSpeichern } from '../components/ui';
 import { datum, euro, heute, neueId } from '../format';
 import { useNav } from '../nav';
@@ -191,9 +191,10 @@ export function RechnungFormular({
     if (pkvManuell || !person) return;
     const halten = standardZurueckhalten(r, person, state);
     setR((x) => {
-      if (x.nichtEinreichen.includes('pkv') === halten) return x;
-      const ohne = x.nichtEinreichen.filter((k) => k !== 'pkv');
-      return { ...x, nichtEinreichen: halten ? [...ohne, 'pkv'] : ohne };
+      const kt = versicherungFuer(x.art);
+      const ohne = x.nichtEinreichen.filter((k) => k !== 'pkv' && k !== 'ppv');
+      const neu = halten ? [...ohne, kt] : ohne;
+      return neu.join() === x.nichtEinreichen.join() ? x : { ...x, nichtEinreichen: neu };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [r.personId, r.art, r.vorsorge, r.datum, pkvManuell, person, state]);
@@ -283,8 +284,8 @@ export function RechnungFormular({
                   rechnung={vorschau}
                   quoteProzent={quote(person, r.art, kt)}
                   berechnet={erwartet({ ...vorschau, erwartetManuell: {} }, person, kt, state.rechnungen)}
-                  selbstbehalt={kt === 'pkv' ? selbstbehalt(vorschau, person, state.rechnungen) : 0}
-                  bre={kt === 'pkv' && person.pkv.bre > 0 && !r.vorsorge}
+                  selbstbehalt={kt === versicherungFuer(r.art) ? selbstbehalt(vorschau, person, state.rechnungen) : 0}
+                  bre={kt === versicherungFuer(r.art) && breRelevant(vorschau, person)}
                   onChange={(teil) => {
                     if (teil.nichtEinreichen) setPkvManuell(true);
                     setR((x) => ({ ...x, ...teil }));
