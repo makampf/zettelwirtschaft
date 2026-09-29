@@ -1,5 +1,5 @@
 /// <reference types="vitest/config" />
-import { copyFileSync, mkdirSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
@@ -7,6 +7,8 @@ import react from '@vitejs/plugin-react';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 
 const require = createRequire(import.meta.url);
+/** Version aus package.json – wird bei jedem Release von semantic-release erhöht. */
+const version: string = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')).version;
 
 /**
  * Legt die Dateien für die Texterkennung (tesseract.js) neben die App nach dist/ocr/,
@@ -36,6 +38,9 @@ function ocrDateien(): Plugin {
 // per Doppelklick im Browser geöffnet werden kann, plus die OCR-Dateien in dist/ocr/.
 export default defineConfig({
   base: './',
+  define: {
+    __APP_VERSION__: JSON.stringify(version),
+  },
   plugins: [react(), viteSingleFile(), ocrDateien()],
   test: {
     environment: 'node',

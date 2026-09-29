@@ -74,6 +74,17 @@ export default function App() {
         {seite === 'personen' && <Personen />}
         {seite === 'daten' && <Daten />}
       </main>
+      <footer className="app-fuss">
+        <a href="https://github.com/makampf/zettelwirtschaft/releases" target="_blank" rel="noreferrer">
+          Zettelwirtschaft v{__APP_VERSION__}
+        </a>
+        <span aria-hidden> · </span>
+        <span>Mit ❤️ von Marvin</span>
+        <span aria-hidden> · </span>
+        <a href="https://github.com/makampf/zettelwirtschaft" target="_blank" rel="noreferrer">Quellcode (AGPL-3.0)</a>
+        <span aria-hidden> · </span>
+        <a href="THIRD-PARTY-LICENSES.txt" target="_blank" rel="noreferrer">Lizenzen</a>
+      </footer>
     </NavCtx.Provider>
   );
 }

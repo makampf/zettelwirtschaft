@@ -28,7 +28,8 @@ describe.skipIf(!url)('Server-API', () => {
 
   it('meldet sich als Server und liefert ohne Daten null', async () => {
     const app = erstelleApp(db);
-    expect(await (await app.request('/api/status')).json()).toEqual({ server: true, anmeldung: false });
+    expect(await (await app.request('/api/status')).json()).toEqual({ server: true, anmeldung: false, version: null });
+    expect(await (await erstelleApp(db, { version: '1.2.3' }).request('/api/status')).json()).toMatchObject({ version: '1.2.3' });
     expect(await (await app.request('/api/state')).json()).toEqual({ state: null });
   });
 

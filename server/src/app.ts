@@ -8,6 +8,8 @@ import { SAMMLUNGEN, type Aenderungen, type Datenbank, type Datensatz, type Samm
 export interface Optionen {
   /** Inhalt der ausgelieferten App (dist/index.html); ohne Angabe nur API. */
   indexHtml?: string;
+  /** Version der App (aus package.json), wird unter /api/status gemeldet. */
+  version?: string;
   /** Verzeichnis mit den Dateien für die Texterkennung (dist/ocr). */
   ocrVerzeichnis?: string;
   /** Wenn gesetzt, ist die gesamte App per HTTP Basic Auth geschützt. */
@@ -73,7 +75,7 @@ export function erstelleApp(db: Datenbank, opt: Optionen = {}): Hono {
     if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store');
   });
 
-  app.get('/api/status', (c) => c.json({ server: true, anmeldung: !!opt.passwort }));
+  app.get('/api/status', (c) => c.json({ server: true, anmeldung: !!opt.passwort, version: opt.version ?? null }));
 
   app.get('/api/state', async (c) => c.json({ state: await db.laden() }));
 
@@ -140,6 +142,13 @@ export function erstelleApp(db: Datenbank, opt: Optionen = {}): Hono {
     const endung = /\.(wasm|js|gz)$/.exec(datei)?.[0] ?? '';
     // Kein Content-Encoding: die Sprachdaten entpackt tesseract.js selbst
     return c.body(new Uint8Array(inhalt), 200, { 'Content-Type': OCR_TYPEN[endung] ?? 'application/octet-stream', 'Cache-Control': 'public, max-age=604800' });
+  });
+
+  // Lizenztexte der mitgelieferten Bibliotheken (beim Build erzeugt)
+  app.get('/THIRD-PARTY-LICENSES.txt', async (c) => {
+    if (!opt.ocrVerzeichnis) return c.text('Nicht verfügbar', 404);
+    const text = await readFile(join(opt.ocrVerzeichnis, '..', 'THIRD-PARTY-LICENSES.txt'), 'utf8').catch(() => null);
+    return text ? c.text(text) : c.text('Nicht gefunden', 404);
   });
 
   // Die App selbst ist eine einzige HTML-Datei

@@ -230,6 +230,9 @@ legend { font-weight: 600; padding: 0 0.35rem; }
 .vorschlaege .vorschlaege-titel { cursor: default; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--grau); padding-bottom: 0.15rem; }
 .lesetext summary { cursor: pointer; font-size: 0.82rem; color: var(--grau); }
 .lesetext pre { max-height: 16rem; overflow: auto; font-size: 0.75rem; background: var(--hover); padding: 0.5rem; border-radius: 6px; white-space: pre-wrap; margin: 0.35rem 0 0; }
+.app-fuss { text-align: center; font-size: 0.8rem; color: var(--grau); padding: 1.5rem 1rem 2rem; }
+.app-fuss a { color: inherit; text-decoration: none; }
+.app-fuss a:hover { text-decoration: underline; }
 .chips { display: flex; flex-direction: column; gap: 0.15rem; }
 .speicherfehler { position: sticky; top: 0; z-index: 20; display: flex; gap: 0.75rem; align-items: center; justify-content: center; flex-wrap: wrap; padding: 0.5rem 1rem; background: var(--rot-bg); color: var(--rot); }
 .speicherort { font-size: 0.75rem; color: var(--grau); white-space: nowrap; }

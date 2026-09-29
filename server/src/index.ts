@@ -17,6 +17,7 @@ if (!env.APP_PASSWORD) {
 
 const hier = dirname(fileURLToPath(import.meta.url));
 const indexPfad = env.STATIC_INDEX ?? resolve(hier, '../../dist/index.html');
+const version: string = JSON.parse(readFileSync(resolve(hier, '../../package.json'), 'utf8')).version;
 
 const pool = new pg.Pool({ connectionString: env.DATABASE_URL });
 const db = new Datenbank(pool);
@@ -39,9 +40,10 @@ async function start() {
     passwort: env.APP_PASSWORD,
     maxUploadBytes: Number(env.MAX_UPLOAD_MB ?? 25) * 1024 * 1024,
     ocrVerzeichnis: resolve(dirname(indexPfad), 'ocr'),
+    version,
   });
   const port = Number(env.PORT ?? 8080);
-  serve({ fetch: app.fetch, port }, () => console.log(`Zettelwirtschaft läuft auf Port ${port}`));
+  serve({ fetch: app.fetch, port }, () => console.log(`Zettelwirtschaft ${version} läuft auf Port ${port}`));
 }
 
 start().catch((e) => {
