@@ -8,12 +8,14 @@ export type Fortschritt = (meldung: string) => void;
 /** Höchstens so viele Seiten auswerten – die Angaben stehen fast immer vorne bzw. auf der ersten Seite. */
 const MAX_SEITEN = 3;
 
-let pdfjsLaden: Promise<typeof import('pdfjs-dist')> | undefined;
+// „legacy“-Build: bringt Polyfills mit (die Standard-Version nutzt z. B. Map.getOrInsertComputed,
+// das viele aktuelle Browser noch nicht kennen – gescannte PDFs ließen sich dann nicht rendern)
+let pdfjsLaden: Promise<typeof import('pdfjs-dist/legacy/build/pdf.mjs')> | undefined;
 
 async function pdfjs() {
   pdfjsLaden ??= (async () => {
-    const lib = await import('pdfjs-dist');
-    const { default: PdfWorker } = await import('pdfjs-dist/build/pdf.worker.min.mjs?worker&inline');
+    const lib = await import('pdfjs-dist/legacy/build/pdf.mjs');
+    const { default: PdfWorker } = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?worker&inline');
     lib.GlobalWorkerOptions.workerPort = new PdfWorker();
     return lib;
   })();
