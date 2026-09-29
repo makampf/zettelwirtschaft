@@ -1,3 +1,4 @@
+import { bekannterErbringerImText } from '../erbringer';
 import { plusTage } from '../format';
 import type { Leistungsart, Person } from '../types';
 
@@ -144,13 +145,57 @@ function findeFaellig(zeilen: string[], datum: string | undefined): string | und
 // ---------------------------------------------------------------------------
 // Rechnungsnummer, Leistungserbringer, Art, Person
 
+/** Bezeichnungen der Rechnungsnummer mit Gewicht. Wortgrenzen verhindern Treffer in „Ihre Nr.“ / „Unsere Nr.“. */
+const NR_SCHLUESSEL: [RegExp, number][] = [
+  [/\brechnungs[-\s]?(?:nummer|nr|no)\b\.?/gi, 3],
+  [/\brechnung\s+(?:nr|no)\b\.?/gi, 3],
+  [/\b(?:rg|re)\.?[-\s]?nr\b\.?/gi, 2],
+  [/\binvoice\s*(?:no|nr|number)\b\.?/gi, 2],
+  [/\bbeleg[-\s]?(?:nummer|nr)\b\.?/gi, 1],
+];
+const NR_WERT = /^([A-Za-z0-9][A-Za-z0-9\-/.]{1,30})/;
+const SPALTEN = /\s{3,}/;
+
+/** Prüft einen möglichen Wert und liefert Zusatzpunkte – oder null, wenn er keine Rechnungsnummer sein kann. */
+function nrBewertung(wert: string): number | null {
+  if (!/\d/.test(wert)) return null; // Beschriftung statt Wert
+  if (/^\d{1,2}\.\d{1,2}\.\d{2,4}$/.test(wert)) return null; // Datum
+  let punkte = 0;
+  if (/^20\d{2}(0[1-9]|1[0-2])$/.test(wert)) punkte -= 1; // sieht aus wie Jahr+Monat
+  if (/\d{5,}/.test(wert)) punkte += 0.5;
+  return punkte;
+}
+
 function findeRechnungsnummer(zeilen: string[]): string | undefined {
-  const re = /(?:rechnungs[-\s]?(?:nr|nummer|no)|rechnung\s+nr|rg\.?[-\s]?nr|re\.?[-\s]?nr|beleg[-\s]?(?:nr|nummer)|invoice\s*(?:no|nr|number))\.?\s*[:#]?\s*([A-Za-z0-9][A-Za-z0-9\-/.]{1,30})/i;
-  for (const z of zeilen) {
-    const m = re.exec(z);
-    if (m && /\d/.test(m[1])) return m[1].replace(/[.]$/, '');
-  }
-  return undefined;
+  let bester: { wert: string; punkte: number } | undefined;
+  const pruefe = (roh: string | undefined, punkte: number) => {
+    const wert = roh?.trim().match(NR_WERT)?.[1].replace(/[.]$/, '');
+    const zusatz = wert ? nrBewertung(wert) : null;
+    if (wert && zusatz != null && (!bester || punkte + zusatz > bester.punkte)) bester = { wert, punkte: punkte + zusatz };
+  };
+
+  zeilen.forEach((zeile, i) => {
+    for (const [re, gewicht] of NR_SCHLUESSEL) {
+      for (const m of zeile.matchAll(re)) {
+        const ende = (m.index ?? 0) + m[0].length;
+        const rest = zeile.slice(ende);
+        // 1. Wert direkt dahinter („Rechnungsnummer: 987654321“)
+        if (!SPALTEN.test(rest.match(/^\s*[:#]?\s*/)?.[0] ?? '') || /^\s*[:#]/.test(rest)) {
+          pruefe(rest.replace(/^\s*[:#]?\s*/, ''), gewicht);
+        }
+        // 2. Tabellenkopf: Wert in derselben Spalte der nächsten Zeile
+        const naechste = zeilen[i + 1];
+        if (!naechste) continue;
+        const kopf = zeile.split(SPALTEN);
+        const spalte = kopf.findIndex((zelle) => new RegExp(re.source, 'i').test(zelle));
+        const werte = naechste.split(SPALTEN);
+        if (kopf.length >= 2 && spalte >= 0 && werte.length === kopf.length) pruefe(werte[spalte], gewicht - 0.25);
+        // 3. Beschriftung allein am Zeilenende, Wert darunter
+        else if (!rest.trim().replace(/^[:#]/, '').trim()) pruefe(werte[0], gewicht - 0.5);
+      }
+    }
+  });
+  return bester?.wert;
 }
 
 const ERBRINGER = /\b(dr\.?\s*(?:med\.?\s*)?(?:dent\.?\s*)?[a-zäöüß]|praxis|gemeinschaftspraxis|apotheke|klinik|klinikum|krankenhaus|mvz|zahnarzt|zahnärzt|labor|pflegedienst|pflegeheim|seniorenheim|seniorenzentrum|seniorenresidenz|altenheim|sozialstation|diakonie|caritas|physiotherapie|krankengymnastik|ergotherapie|logopädie|optik|augenoptik|sanitätshaus|hörgeräte|orthopädie|radiologie|facharzt|heilpraktiker|tagespflege)/i;
@@ -161,6 +206,9 @@ function findeErbringer(zeilen: string[], text: string, bekannte: string[]): str
   const klein = text.toLowerCase().replace(/\s+/g, ' ');
   const bekannt = bekannte.filter((b) => b.length >= 4 && klein.includes(b.toLowerCase().replace(/\s+/g, ' '))).sort((a, b) => b.length - a.length);
   if (bekannt.length) return bekannt[0];
+  // 1b. Unscharf: kennzeichnende Wörter (z. B. Nachname) im Briefkopf
+  const aehnlich = bekannterErbringerImText(zeilen.slice(0, 25).join('\n'), bekannte);
+  if (aehnlich) return aehnlich;
   // 2. Briefkopf: erste passende Zeile im oberen Teil
   for (const z of zeilen.slice(0, 20)) {
     if (KEIN_ERBRINGER.test(z)) continue;
@@ -199,7 +247,12 @@ function findePerson(zeilen: string[], personen: ParserKontext['personen']): str
 
 /** Liest die wichtigsten Angaben aus dem Text einer Rechnung. */
 export function rechnungAuslesen(roh: string, k: ParserKontext): Erkennung {
-  const text = roh.replace(/ /g, ' ').replace(/[ \t]+/g, ' ');
+  // Leerzeichen vereinheitlichen, breite Spaltenabstände (≥ 3) aber erhalten – sie trennen Tabellenspalten
+  const text = roh
+    .replace(/\u00a0/g, ' ')
+    .replace(/\t/g, '   ')
+    .replace(/ {3,}/g, '   ')
+    .replace(/(?<! ) {2}(?! )/g, ' ');
   const zeilen = text.split(/\r?\n/).map((z) => z.trim()).filter(Boolean);
   const e: Erkennung = {};
   e.betrag = findeBetrag(zeilen);

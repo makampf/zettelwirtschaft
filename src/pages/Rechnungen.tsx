@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { beihilfeFristEnde, breRelevant, erwartet, quote, rechnungUebersicht, selbstbehalt, standardZurueckhalten, traegerFuer, traegerInfo, versicherungFuer } from '../calc';
+import { ErbringerFeld } from '../components/ErbringerFeld';
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, StatusBadge, useDateienSpeichern } from '../components/ui';
+import { erbringerListe, type ErbringerInfo } from '../erbringer';
 import { rechnungAuslesen, type Erkennung } from '../erkennung/parser';
 import { istLesbar, textAusDatei } from '../erkennung/text';
 import { datum, euro, heute, neueId } from '../format';
@@ -221,6 +223,7 @@ export function RechnungFormular({
   const [erkannt, setErkannt] = useState<Set<ErkanntesFeld>>(new Set());
   const [leseStatus, setLeseStatus] = useState<{ art: 'laeuft' | 'ok' | 'leer' | 'fehler'; text: string } | null>(null);
   const beruehrt = useRef(new Set<string>());
+  const [leseText, setLeseText] = useState<string | null>(null);
   // Bei neuen Rechnungen wird „Zurückhalten (BRE)“ vorbelegt, bis die Checkbox von Hand geändert wird.
   const [pkvManuell, setPkvManuell] = useState(!!rechnung);
 
@@ -253,6 +256,7 @@ export function RechnungFormular({
     setLeseStatus({ art: 'laeuft', text: 'Beleg wird ausgelesen …' });
     try {
       const text = await textAusDatei(datei, (t) => setLeseStatus({ art: 'laeuft', text: t }));
+      setLeseText(text);
       const e = rechnungAuslesen(text, { personen: state.personen, bekannteErbringer: erbringer, heute: heute() });
       const frei = (k: string, leer: boolean) => !beruehrt.current.has(k) && (!rechnung || leer);
       const uebernommen = new Set<ErkanntesFeld>();
@@ -310,8 +314,28 @@ export function RechnungFormular({
   }
   const vorschau = { ...r, betrag: betrag ?? 0 };
 
-  // Leistungserbringer-Vorschläge aus bisherigen Rechnungen
-  const erbringer = useMemo(() => [...new Set(state.rechnungen.map((x) => x.leistungserbringer).filter(Boolean))].sort(), [state.rechnungen]);
+  // Leistungserbringer-Vorschläge aus bisherigen Rechnungen (ohne die gerade bearbeitete)
+  const erbringerInfos = useMemo(() => erbringerListe(state.rechnungen.filter((x) => x.id !== r.id)), [state.rechnungen, r.id]);
+  const erbringer = useMemo(() => erbringerInfos.map((e) => e.name), [erbringerInfos]);
+  const [vorlageHinweis, setVorlageHinweis] = useState<string | null>(null);
+
+  /** Bekannter Erbringer gewählt: Art und (eindeutige) Person wie bei den bisherigen Rechnungen übernehmen. */
+  function erbringerGewaehlt(info: ErbringerInfo) {
+    const teil: Partial<Rechnung> = {};
+    const uebernommen: string[] = [];
+    if (!beruehrt.current.has('art') && !erkannt.has('art') && info.art !== r.art) {
+      teil.art = info.art;
+      uebernommen.push(ART_NAME[info.art]);
+    }
+    if (!rechnung && info.personId && info.personId !== r.personId && !beruehrt.current.has('personId') && !erkannt.has('personId')) {
+      teil.personId = info.personId;
+      uebernommen.push(personById(info.personId)?.name ?? '');
+    }
+    if (uebernommen.length) {
+      setR((x) => ({ ...x, ...teil }));
+      setVorlageHinweis(`Wie bei den bisherigen Rechnungen: ${uebernommen.join(', ')}`);
+    }
+  }
   const hatLesbarenBeleg = neueDateien.some(istLesbar) || dateiIds.some((id) => /pdf|image/.test(state.dateien.find((d) => d.id === id)?.typ ?? ''));
 
   const belegFeld = (
@@ -321,6 +345,12 @@ export function RechnungFormular({
         <button type="button" className="klein" onClick={() => void vorhandenenBelegAuslesen()}>🔍 Angaben aus Beleg übernehmen</button>
       )}
       {leseStatus && <div className={`lesestatus ${leseStatus.art}`} role="status">{leseStatus.art === 'laeuft' ? '⏳ ' : leseStatus.art === 'ok' ? '✓ ' : leseStatus.art === 'fehler' ? '⚠️ ' : 'ℹ️ '}{leseStatus.text}</div>}
+      {leseText && leseStatus?.art !== 'laeuft' && (
+        <details className="lesetext">
+          <summary>Gelesenen Text anzeigen</summary>
+          <pre>{leseText.trim() || '(kein Text erkannt)'}</pre>
+        </details>
+      )}
     </Feld>
   );
 
@@ -374,8 +404,17 @@ export function RechnungFormular({
             <BetragFeld wert={betrag} onChange={setzeBetrag} pflicht />
           </Feld>
           <Feld label="Leistungserbringer" hinweis="Arzt, Apotheke, Pflegedienst, Heim …" erkannt={erkannt.has('leistungserbringer')}>
-            <input list="erbringer" value={r.leistungserbringer} onChange={(e) => set('leistungserbringer', e.target.value)} required />
-            <datalist id="erbringer">{erbringer.map((e) => <option key={e} value={e} />)}</datalist>
+            <ErbringerFeld
+              wert={r.leistungserbringer}
+              liste={erbringerInfos}
+              onChange={(name) => {
+                setVorlageHinweis(null);
+                set('leistungserbringer', name);
+              }}
+              onAuswahl={erbringerGewaehlt}
+              pflicht
+            />
+            {vorlageHinweis && <small className="ok">{vorlageHinweis}</small>}
           </Feld>
           <Feld label="Rechnungsnummer" erkannt={erkannt.has('rechnungsnummer')}>
             <input value={r.rechnungsnummer} onChange={(e) => set('rechnungsnummer', e.target.value)} />

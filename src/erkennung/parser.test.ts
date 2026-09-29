@@ -138,6 +138,31 @@ describe('Rechnung auslesen', () => {
     });
   });
 
+  describe('Rechnungsnummer', () => {
+    const nr = (text: string) => rechnungAuslesen(text, kontext).rechnungsnummer;
+
+    it('verwechselt „Ihre Nr.“ / „Unsere Nr.“ nicht mit der Rechnungsnummer', () => {
+      expect(nr('Ihre Nr. 202608   Rechnungsnummer 987654321')).toBe('987654321');
+      expect(nr('Unsere Nr.: 202608\nRechnungsnummer: 987654321')).toBe('987654321');
+      expect(nr('Ihre Nr. 202608')).toBeUndefined();
+    });
+
+    it('liest Tabellenköpfe mit dem Wert in der Zeile darunter', () => {
+      const text = 'Kundennummer   Rechnungsnummer   Rechnungsdatum\n202608   987654321   14.08.2026';
+      expect(nr(text)).toBe('987654321');
+    });
+
+    it('nimmt nicht das Rechnungsdatum als Nummer', () => {
+      expect(nr('Rechnungs-Nr. / Datum: 14.08.2026\nRechnungs-Nr.: 987654321')).toBe('987654321');
+    });
+
+    it('bevorzugt „Rechnungsnummer“ gegenüber schwächeren Bezeichnungen', () => {
+      expect(nr('Beleg-Nr. 7712\nRechnungsnummer 987654321')).toBe('987654321');
+      expect(nr('Rg.-Nr. 7781')).toBe('7781');
+      expect(nr('Rechnung Nr. SZ/2026/09-117')).toBe('SZ/2026/09-117');
+    });
+  });
+
   it('liefert bei unbrauchbarem Text nur wenig', () => {
     expect(rechnungAuslesen('Hallo Welt', kontext)).toEqual({ art: 'krankheit' });
   });
