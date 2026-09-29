@@ -2,6 +2,13 @@
 
 Alle Änderungen an der Zettelwirtschaft. Wird bei jedem Release automatisch aus den Commit-Nachrichten erzeugt.
 
+## [1.1.1](https://github.com/makampf/zettelwirtschaft/compare/v1.1.0...v1.1.1) (2026-09-29)
+
+
+### Bug Fixes
+
+* offer to reset browser data when stored data cannot be loaded ([69ab50c](https://github.com/makampf/zettelwirtschaft/commit/69ab50c9123ea35b5b6e0f5f8555c12f86ceea53))
+
 # [1.1.0](https://github.com/makampf/zettelwirtschaft/compare/v1.0.1...v1.1.0) (2026-09-29)
 
 
