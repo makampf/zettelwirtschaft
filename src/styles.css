@@ -213,3 +213,6 @@ legend { font-weight: 600; padding: 0 0.35rem; }
 .bre .kt-liste li { border-color: rgb(0 0 0 / 0.08); font-size: 0.9rem; }
 .badge.tag { margin-left: 0.4rem; background: var(--gruen-bg); color: var(--gruen); }
 .chips { display: flex; flex-direction: column; gap: 0.15rem; }
+.speicherfehler { position: sticky; top: 0; z-index: 20; display: flex; gap: 0.75rem; align-items: center; justify-content: center; flex-wrap: wrap; padding: 0.5rem 1rem; background: var(--rot-bg); color: var(--rot); }
+.speicherort { font-size: 0.75rem; color: var(--grau); white-space: nowrap; }
+.hinweise .hinweis.info { margin-bottom: 0; }

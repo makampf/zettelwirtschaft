@@ -5,7 +5,7 @@ import { dateigroesse, heute } from '../format';
 import { useStore } from '../store';
 
 export default function Daten() {
-  const { state, allesErsetzen } = useStore();
+  const { state, speicherArt, allesErsetzen } = useStore();
   const [meldung, setMeldung] = useState<string | null>(null);
   const [laeuft, setLaeuft] = useState(false);
   const speicher = state.dateien.reduce((s, d) => s + d.groesse, 0);
@@ -51,14 +51,31 @@ export default function Daten() {
       <div className="karten">
         <article className="karte">
           <h2>Wo liegen meine Daten?</h2>
-          <p>
-            Alle Rechnungen, Einreichungen und Belege werden <strong>nur lokal in diesem Browser</strong> gespeichert. Es wird nichts an einen Server übertragen.
-          </p>
+          {speicherArt === 'server' ? (
+            <p>
+              Alle Rechnungen, Einreichungen und Belege liegen in der <strong>Datenbank deines Servers</strong> (Postgres). Alle Geräte, die die App
+              über diesen Server öffnen, sehen denselben Stand.
+            </p>
+          ) : (
+            <p>
+              Alle Rechnungen, Einreichungen und Belege werden <strong>nur lokal in diesem Browser</strong> gespeichert. Es wird nichts an einen Server
+              übertragen.
+            </p>
+          )}
           <p className="grau">
             Aktuell: {state.personen.length} Personen, {state.rechnungen.length} Rechnungen, {state.einreichungen.length} Einreichungen, {state.dateien.length} Belege (
             {dateigroesse(speicher)}).
           </p>
-          <p className="grau">Werden die Browserdaten gelöscht, sind auch diese Daten weg. Lege deshalb regelmäßig eine Sicherung an.</p>
+          {speicherArt === 'server' ? (
+            <p className="grau">Sichere die Datenbank regelmäßig (z. B. mit pg_dump). Eine Sicherungsdatei kannst du zusätzlich hier herunterladen.</p>
+          ) : (
+            <>
+              <p className="grau">Werden die Browserdaten gelöscht, sind auch diese Daten weg. Lege deshalb regelmäßig eine Sicherung an.</p>
+              <p className="grau">
+                Umzug auf den eigenen Server: hier „Sicherung herunterladen“, die App über den Server öffnen und dort „Sicherung einspielen“.
+              </p>
+            </>
+          )}
         </article>
 
         <article className="karte">

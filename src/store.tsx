@@ -1,11 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { startState } from './beispiel';
-import { dauerhaftSpeichern, ladeDatei, ladeState, loescheAlleDateien, loescheDatei, speichereDatei, speichereState } from './db';
 import { neueId } from './format';
+import { migriere } from './migration';
+import { speicherErmitteln, type Speicher } from './speicher';
 import type { AppState, DateiMeta, Einreichung, Person, Rechnung } from './types';
 
 interface Store {
   state: AppState;
+  speicherArt: Speicher['art'];
   personById: (id: string) => Person | undefined;
   speicherePerson: (p: Person) => void;
   loeschePerson: (id: string) => void;
@@ -34,37 +36,75 @@ function upsert<T extends { id: string }>(liste: T[], el: T): T[] {
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState | null>(null);
   const [fehler, setFehler] = useState<string | null>(null);
-  const geladen = useRef(false);
+  const [speicherFehler, setSpeicherFehler] = useState<string | null>(null);
+  const [sp, setSp] = useState<Speicher | null>(null);
+  // Zählt lokale Änderungen, damit ein Neuladen vom Server keine frischen Eingaben überschreibt
+  const aenderungen = useRef(0);
 
   useEffect(() => {
-    ladeState()
-      .then((s) => {
-        setState(s ?? startState());
-        geladen.current = true;
-        void dauerhaftSpeichern();
-      })
-      .catch((e) => setFehler(String(e)));
+    (async () => {
+      const gefunden = await speicherErmitteln();
+      const roh = await gefunden.lade();
+      gefunden.uebernommen?.(roh);
+      setSp(gefunden);
+      setState(roh ? migriere(roh) : startState());
+    })().catch((e) => setFehler(String(e)));
   }, []);
 
-  useEffect(() => {
-    if (state && geladen.current) speichereState(state).catch((e) => setFehler(`Speichern fehlgeschlagen: ${e}`));
-  }, [state]);
+  const speichern = useCallback(
+    (s: AppState) => {
+      sp?.speichere(s).then(
+        () => setSpeicherFehler(null),
+        (e) => setSpeicherFehler(e instanceof Error ? e.message : String(e)),
+      );
+    },
+    [sp],
+  );
 
-  const aendern = useCallback((fn: (s: AppState) => AppState) => setState((s) => (s ? fn(s) : s)), []);
+  useEffect(() => {
+    if (state) speichern(state);
+  }, [state, speichern]);
+
+  // Server: beim Zurückkehren zur App den aktuellen Stand holen (Änderungen von anderen Geräten)
+  useEffect(() => {
+    if (sp?.art !== 'server') return;
+    const neuLaden = async () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        await sp.warte?.();
+        const vorher = aenderungen.current;
+        const roh = await sp.lade();
+        // Nur übernehmen, wenn zwischenzeitlich nichts lokal geändert wurde
+        if (!roh || aenderungen.current !== vorher) return;
+        sp.uebernommen?.(roh);
+        setState(migriere(roh));
+      } catch {
+        // offline o. Ä. – beim nächsten Mal
+      }
+    };
+    document.addEventListener('visibilitychange', neuLaden);
+    return () => document.removeEventListener('visibilitychange', neuLaden);
+  }, [sp]);
+
+  const aendern = useCallback((fn: (s: AppState) => AppState) => {
+    aenderungen.current++;
+    setState((s) => (s ? fn(s) : s));
+  }, []);
 
   const dateienEntfernen = useCallback(
     async (ids: string[]) => {
-      if (!ids.length) return;
-      await Promise.all(ids.map(loescheDatei));
+      if (!ids.length || !sp) return;
+      await Promise.all(ids.map((id) => sp.loescheDatei(id)));
       aendern((s) => ({ ...s, dateien: s.dateien.filter((d) => !ids.includes(d.id)) }));
     },
-    [aendern],
+    [aendern, sp],
   );
 
   const store = useMemo<Store | null>(() => {
-    if (!state) return null;
+    if (!state || !sp) return null;
     return {
       state,
+      speicherArt: sp.art,
       personById: (id) => state.personen.find((p) => p.id === id),
       speicherePerson: (p) =>
         aendern((s) => ({
@@ -105,7 +145,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         const metas: DateiMeta[] = [];
         for (const f of files) {
           const meta = { id: neueId(), name: f.name, typ: f.type || 'application/octet-stream', groesse: f.size };
-          await speichereDatei(meta.id, f);
+          await sp.speichereDatei(meta, f);
           metas.push(meta);
         }
         aendern((s) => ({ ...s, dateien: [...s.dateien, ...metas] }));
@@ -113,21 +153,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       },
       dateienEntfernen,
       dateiOeffnen: async (id) => {
-        const blob = await ladeDatei(id);
-        if (!blob) return alert('Datei nicht gefunden.');
+        if (sp.dateiUrl) {
+          window.open(sp.dateiUrl(id), '_blank');
+          return;
+        }
+        // Fenster sofort öffnen, damit Popup-Blocker nicht eingreifen
+        const fenster = window.open('', '_blank');
+        const blob = await sp.ladeDatei(id);
+        if (!blob) {
+          fenster?.close();
+          return alert('Datei nicht gefunden.');
+        }
         const url = URL.createObjectURL(blob);
-        window.open(url, '_blank');
+        if (fenster) fenster.location.href = url;
+        else window.open(url, '_blank');
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
       },
       allesErsetzen: async (neu, dateien) => {
-        await loescheAlleDateien();
-        for (const [id, blob] of dateien) await speichereDatei(id, blob);
+        aenderungen.current++;
+        await sp.ersetzeAlles(neu, dateien);
         setState(neu);
       },
     };
-  }, [state, aendern, dateienEntfernen]);
+  }, [state, sp, aendern, dateienEntfernen]);
 
-  if (fehler) return <div className="laden fehler">Fehler: {fehler}</div>;
+  if (fehler) return <div className="laden fehler">Fehler beim Laden: {fehler}</div>;
   if (!store) return <div className="laden">Lade Daten …</div>;
-  return <Ctx.Provider value={store}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={store}>
+      {speicherFehler && (
+        <div className="speicherfehler" role="alert">
+          <span>⚠️ Speichern fehlgeschlagen ({speicherFehler}). Deine Änderungen sind noch nicht gesichert.</span>
+          <button className="klein" onClick={() => speichern(store.state)}>Erneut versuchen</button>
+        </div>
+      )}
+      {children}
+    </Ctx.Provider>
+  );
 }

@@ -1,4 +1,4 @@
-import { ladeDatei } from './db';
+import { speicher } from './speicher';
 import { migriere } from './migration';
 import type { AppState } from './types';
 
@@ -29,7 +29,7 @@ function vonBase64(b64: string): Uint8Array<ArrayBuffer> {
 export async function backupErstellen(state: AppState): Promise<Blob> {
   const dateien: Record<string, string> = {};
   for (const d of state.dateien) {
-    const blob = await ladeDatei(d.id);
+    const blob = await speicher().ladeDatei(d.id);
     if (blob) dateien[d.id] = zuBase64(await blob.arrayBuffer());
   }
   const backup: Backup = { format: BACKUP_FORMAT, erstelltAm: new Date().toISOString(), state, dateien };

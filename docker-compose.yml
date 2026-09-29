@@ -1,0 +1,39 @@
+# Rechnungsmanager mit eigener Postgres-Datenbank.
+# Start:  cp .env.example .env  (Passwörter anpassen)  &&  docker compose up -d
+# Danach: http://<homeserver>:8080
+#
+# Bestehende Postgres-Instanz nutzen? Den Dienst „db“ entfernen und DATABASE_URL
+# auf die vorhandene Datenbank zeigen lassen (siehe README).
+services:
+  app:
+    image: ghcr.io/makampf/claudetest:latest
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://rechnungen:${POSTGRES_PASSWORD}@db:5432/rechnungen
+      APP_USER: ${APP_USER:-familie}
+      APP_PASSWORD: ${APP_PASSWORD}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: rechnungen
+      POSTGRES_USER: rechnungen
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - db-daten:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rechnungen -d rechnungen"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  db-daten:

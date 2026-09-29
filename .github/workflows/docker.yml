@@ -1,0 +1,63 @@
+name: Docker-Image
+
+on:
+  push:
+    branches: [main, claude/insurance-claims-management-app-tfagfa]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Image bauen
+        run: docker build -t "$IMAGE:latest" -t "$IMAGE:${GITHUB_SHA::7}" .
+
+      - name: Rauchtest mit docker compose (App + Postgres)
+        run: |
+          cat > .env <<'ENV'
+          POSTGRES_PASSWORD=ci-db-passwort
+          APP_USER=familie
+          APP_PASSWORD=ci-app-passwort
+          ENV
+          docker compose up -d --no-build
+          for i in $(seq 1 30); do
+            curl -fs http://127.0.0.1:8080/api/health && break
+            sleep 2
+          done
+          echo "--- ohne Anmeldung (401 erwartet)"
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/)" = 401
+          echo "--- App ausliefern"
+          curl -fs -u familie:ci-app-passwort http://127.0.0.1:8080/ | grep -q Rechnungsmanager
+          echo "--- speichern und laden"
+          curl -fs -u familie:ci-app-passwort -H 'X-Rechnungsmanager: 1' -H 'Content-Type: application/json' \
+            -d '{"version":4,"speichern":{"personen":[{"id":"p1","name":"Test"}]}}' http://127.0.0.1:8080/api/aenderungen
+          curl -fs -u familie:ci-app-passwort http://127.0.0.1:8080/api/state | grep -q '"name":"Test"'
+          echo "--- Neustart: Daten bleiben erhalten"
+          docker compose restart app
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8080/api/health && break; sleep 2; done
+          curl -fs -u familie:ci-app-passwort http://127.0.0.1:8080/api/state | grep -q '"name":"Test"'
+          echo "Rauchtest ok"
+
+      - name: Logs bei Fehler
+        if: failure()
+        run: docker compose logs
+
+      - name: Aufräumen
+        if: always()
+        run: docker compose down -v
+
+      - name: Anmelden bei GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Image veröffentlichen
+        run: |
+          docker push "$IMAGE:latest"
+          docker push "$IMAGE:${GITHUB_SHA::7}"

@@ -19,7 +19,7 @@ const SEITEN: { id: Seite; titel: string; icon: string }[] = [
 ];
 
 export default function App() {
-  const { state } = useStore();
+  const { state, speicherArt } = useStore();
   const [seite, setSeite] = useState<Seite>('uebersicht');
   const [personFilter, setPersonFilter] = useState('');
   const [ziel, setZiel] = useState<Nav['ziel']>();
@@ -45,7 +45,12 @@ export default function App() {
   return (
     <NavCtx.Provider value={nav}>
       <header className="kopf">
-        <div className="marke">🧾 Rechnungsmanager</div>
+        <div className="marke">
+          🧾 Rechnungsmanager{' '}
+          <span className="speicherort" title={speicherArt === 'server' ? 'Daten liegen in der Server-Datenbank' : 'Daten liegen nur in diesem Browser'}>
+            {speicherArt === 'server' ? '· Server' : '· Browser'}
+          </span>
+        </div>
         <nav>
           {SEITEN.map((s) => (
             <button key={s.id} className={seite === s.id ? 'aktiv' : ''} onClick={() => nav.gehe(s.id)} aria-label={s.titel} title={s.titel}>

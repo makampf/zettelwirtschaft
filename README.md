@@ -4,7 +4,8 @@ Web-App zur Verwaltung von Arzt-, Apotheken- und Pflegerechnungen und deren Einr
 **Beihilfe**, **privater Krankenversicherung (PKV)** und **privater Pflegeversicherung (PPV)** –
 für mehrere Personen (voreingestellt: ich, Oma, Opa).
 
-Alle Daten bleiben **lokal im Browser** (IndexedDB). Es gibt keinen Server, kein Konto und keine Übertragung von Gesundheitsdaten.
+Die Daten liegen entweder in einer **Postgres-Datenbank auf dem eigenen Server** (empfohlen, für mehrere Geräte – siehe unten)
+oder, in der GitHub-Pages- bzw. Datei-Version, **nur lokal im Browser** (IndexedDB). Es werden keine Daten an Dritte übertragen.
 
 ## Funktionen
 
@@ -45,6 +46,71 @@ npm test         # Unit-Tests der Berechnungslogik
 Die Daten hängen am Browser (und bei `file://` am Speicherort) – bitte immer denselben Browser verwenden und regelmäßig
 unter **Daten → Sicherung herunterladen** sichern.
 
+## Auf dem Homeserver betreiben (Postgres)
+
+Wird die App über den mitgelieferten Server geöffnet, speichert sie alles – inklusive Belegen – in einer **Postgres-Datenbank**.
+Alle Geräte (PC, Handy, Tablet) sehen dann denselben Stand. Oben neben dem Namen steht „· Server“ bzw. „· Browser“, damit klar ist,
+wo gerade gespeichert wird.
+
+### Variante A: mit eigener Postgres (am einfachsten)
+
+```bash
+git clone https://github.com/makampf/claudetest.git rechnungsmanager && cd rechnungsmanager
+cp .env.example .env        # Passwörter in .env anpassen!
+docker compose up -d        # oder: docker compose up -d --build  (Image selbst bauen)
+```
+
+Danach ist die App unter `http://<homeserver>:8080` erreichbar (Anmeldung mit `APP_USER` / `APP_PASSWORD` aus der `.env`).
+
+Das fertige Image `ghcr.io/makampf/claudetest:latest` baut GitHub Actions bei jedem Push. Ist das Paket auf GitHub privat,
+vorher `docker login ghcr.io` ausführen oder das Paket unter *GitHub → Packages → Package settings* öffentlich schalten –
+alternativ mit `docker compose up -d --build` lokal bauen.
+
+### Variante B: vorhandene Postgres-Instanz nutzen
+
+In der vorhandenen Datenbank einen Benutzer und eine Datenbank anlegen:
+
+```sql
+CREATE USER rechnungen WITH PASSWORD 'geheim';
+CREATE DATABASE rechnungen OWNER rechnungen;
+```
+
+Dann nur den App-Container starten (Tabellen legt die App beim ersten Start selbst an):
+
+```bash
+docker run -d --name rechnungsmanager --restart unless-stopped -p 8080:8080 \
+  -e DATABASE_URL=postgres://rechnungen:geheim@<postgres-host>:5432/rechnungen \
+  -e APP_USER=familie -e APP_PASSWORD=bitte-aendern \
+  ghcr.io/makampf/claudetest:latest
+```
+
+Läuft die vorhandene Postgres selbst in Docker, den Container in dasselbe Docker-Netzwerk hängen (`--network <netz>`) und als
+Host den Dienstnamen der Datenbank verwenden.
+
+### Einstellungen
+
+| Variable | Bedeutung |
+|---|---|
+| `DATABASE_URL` | Verbindung zur Postgres-Datenbank (Pflicht) |
+| `APP_USER`, `APP_PASSWORD` | Anmeldung für die App (dringend empfohlen – ohne Passwort ist die App offen) |
+| `PORT` | Port des Servers, Standard `8080` |
+| `MAX_UPLOAD_MB` | Maximale Größe eines Belegs, Standard `25` |
+
+### Sicherheit
+
+Die App enthält Gesundheitsdaten. Bitte nur im Heimnetz oder über VPN (z. B. WireGuard, Tailscale) erreichbar machen, oder
+– falls aus dem Internet – ausschließlich per HTTPS hinter einem Reverse Proxy (z. B. Caddy, Traefik, nginx).
+Die Anmeldung erfolgt per HTTP Basic Auth und ist ohne HTTPS nicht abhörsicher.
+
+### Daten übernehmen und sichern
+
+- **Umzug aus der Browser-Version:** in der bisherigen Version *Daten → Sicherung herunterladen*, dann die App über den Server
+  öffnen und dort *Daten → Sicherung einspielen*.
+- **Backup der Datenbank:** `docker compose exec db pg_dump -U rechnungen rechnungen > rechnungen-$(date +%F).sql`
+  (enthält auch alle Belege).
+- Die Daten stehen als JSON in den Tabellen `personen`, `rechnungen`, `einreichungen`; Belege in `dateien`.
+  Beispiel: `SELECT daten->>'leistungserbringer', (daten->>'betrag')::int / 100.0 FROM rechnungen;`
+
 ## Online-Version
 
 Die App wird bei jedem Push automatisch über GitHub Pages veröffentlicht:
@@ -61,4 +127,13 @@ Daten zwischen Geräten (z. B. PC und Handy) lassen sich über **Daten → Siche
 
 ## Technik
 
-React + TypeScript + Vite, Speicherung in IndexedDB, Tests mit Vitest. Die Berechnungslogik liegt in `src/calc.ts`.
+- App: React + TypeScript + Vite, gebaut als eine einzige HTML-Datei. Berechnungslogik in `src/calc.ts`.
+- Speicherung (`src/speicher.ts`): Server-Datenbank, wenn die App vom Server kommt, sonst IndexedDB im Browser.
+  Der Server-Speicher überträgt nur geänderte Datensätze.
+- Server (`server/`): Node.js + Hono + Postgres; liefert die App aus und stellt eine kleine REST-API bereit.
+- Tests mit Vitest; die Server-Tests laufen gegen eine echte Postgres, wenn `TEST_DATABASE_URL` gesetzt ist:
+
+```bash
+TEST_DATABASE_URL=postgres://postgres@localhost:5432/test npm test   # Achtung: leert diese Datenbank
+DATABASE_URL=postgres://… npm run server:dev                         # Server im Entwicklungsmodus
+```
