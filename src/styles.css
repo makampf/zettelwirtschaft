@@ -202,3 +202,12 @@ legend { font-weight: 600; padding: 0 0.35rem; }
   .modal-hintergrund { position: static; background: none; }
   .druck .tabelle th, .druck .tabelle td { border-bottom: 1px solid #999; color: #000; }
 }
+
+/* Beitragsrückerstattung */
+.bre { margin-top: 1rem; padding: 0.6rem 0.75rem; border-radius: 8px; background: var(--hover); display: flex; flex-direction: column; gap: 0.4rem; }
+.bre h3 { margin: 0; }
+.bre p { margin: 0; }
+.bre.zurueckhalten { background: var(--gruen-bg); }
+.bre.einreichen { background: var(--blau-bg); }
+.bre .kt-liste li { border-color: rgb(0 0 0 / 0.08); font-size: 0.9rem; }
+.badge.tag { margin-left: 0.4rem; background: var(--gruen-bg); color: var(--gruen); }

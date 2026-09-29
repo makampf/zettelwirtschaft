@@ -38,6 +38,8 @@ export interface Person {
   name: string;
   farbe: string;
   beihilfe: {
+    /** Ohne Beihilfeberechtigung gehen Rechnungen nur an PKV bzw. PPV. */
+    berechtigt: boolean;
     stelle: string;
     aktenzeichen: string;
     /** Bemessungssatz in Prozent für Krankheitskosten. */
@@ -47,7 +49,18 @@ export interface Person {
     /** Antragsfrist in Monaten ab Rechnungsdatum. */
     fristMonate: number;
   };
-  pkv: { name: string; nummer: string; /** Erstattungsquote in Prozent. */ quote: number };
+  pkv: {
+    name: string;
+    nummer: string;
+    /** Erstattungsquote in Prozent. */
+    quote: number;
+    /** Selbstbehalt in Prozent der Erstattung (Vorsorge ausgenommen). */
+    selbstbehaltProzent: number;
+    /** Höchstbetrag des Selbstbehalts pro Kalenderjahr in Cent. */
+    selbstbehaltMax: number;
+    /** Beitragsrückerstattung pro leistungsfreiem Jahr in Cent (0 = keine). */
+    bre: number;
+  };
   ppv: { name: string; nummer: string; /** Erstattungsquote in Prozent. */ quote: number };
   notiz: string;
 }
@@ -70,6 +83,8 @@ export interface Rechnung {
   beschreibung: string;
   /** Rechnungsbetrag in Cent. */
   betrag: number;
+  /** Vorsorgeuntersuchung: kein Selbstbehalt und BRE-unschädlich. */
+  vorsorge: boolean;
   faelligAm?: string;
   bezahltAm?: string;
   /** Kostenträger, bei denen bewusst nicht eingereicht wird (z. B. wegen Beitragsrückerstattung). */
@@ -107,7 +122,7 @@ export interface Einreichung {
 }
 
 export interface AppState {
-  version: 1;
+  version: 2;
   personen: Person[];
   rechnungen: Rechnung[];
   einreichungen: Einreichung[];

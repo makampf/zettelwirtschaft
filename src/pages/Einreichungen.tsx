@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { einreichbareRechnungen, erwartet, traegerFuer } from '../calc';
+import { breCheck, einreichbareRechnungen, erwartet, traegerFuer } from '../calc';
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, useDateienSpeichern } from '../components/ui';
 import { datum, euro, heute, neueId } from '../format';
 import { useNav } from '../nav';
@@ -51,7 +51,7 @@ export default function Einreichungen() {
         const r = rechnungen.get(p.rechnungId);
         if (!r || !person) continue;
         summe += r.betrag;
-        erw += erwartet(r, person, e.kostentraeger);
+        erw += erwartet(r, person, e.kostentraeger, state.rechnungen);
         erst += p.erstattet ?? 0;
       }
       return { e, person, summe, erw, erst };
@@ -181,8 +181,19 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
     }));
   }
 
+  // Welche Jahre verlieren durch diese PKV-Einreichung ihre Beitragsrückerstattung?
+  const breVerlust = useMemo(() => {
+    if (e.kostentraeger !== 'pkv' || !person?.pkv.bre) return [];
+    const ohneDiese = { rechnungen: state.rechnungen, einreichungen: state.einreichungen.filter((x) => x.id !== e.id) };
+    const jahre = new Set(
+      kandidaten.filter((r) => gewaehlt.has(r.id) && r.art === 'krankheit' && !r.vorsorge).map((r) => Number(r.datum.slice(0, 4))),
+    );
+    return [...jahre].sort().map((j) => breCheck(ohneDiese, person, j)).filter((c) => c != null && c.eingereicht.length === 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [e.kostentraeger, e.id, e.positionen, person, state, kandidaten]);
+
   const summe = kandidaten.filter((r) => gewaehlt.has(r.id)).reduce((s, r) => s + r.betrag, 0);
-  const erw = person ? kandidaten.filter((r) => gewaehlt.has(r.id)).reduce((s, r) => s + erwartet(r, person, e.kostentraeger), 0) : 0;
+  const erw = person ? kandidaten.filter((r) => gewaehlt.has(r.id)).reduce((s, r) => s + erwartet(r, person, e.kostentraeger, state.rechnungen), 0) : 0;
 
   return (
     <Modal titel={einreichung ? 'Einreichung bearbeiten' : 'Neue Einreichung'} onClose={onClose} breit>
@@ -251,7 +262,7 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
                       <td>{r.leistungserbringer}{r.beschreibung && <small className="grau"> · {r.beschreibung}</small>}</td>
                       <td>{ART_NAME[r.art]}</td>
                       <td className="zahl">{euro(r.betrag)}</td>
-                      <td className="zahl">{person && euro(erwartet(r, person, e.kostentraeger))}</td>
+                      <td className="zahl">{person && euro(erwartet(r, person, e.kostentraeger, state.rechnungen))}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -266,6 +277,12 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
             </div>
           )}
           {e.status === 'beschieden' && <small className="grau">Hinweis: Für diese Einreichung ist bereits ein Bescheid erfasst.</small>}
+          {breVerlust.map((c) => c && (
+            <div key={c.jahr} className="hinweis warnung">
+              ⚠️ Damit entfällt die Beitragsrückerstattung {c.jahr} ({euro(c.bre)}).
+              {c.empfehlung === 'zurueckhalten' && ` Erwartete Erstattung aller Rechnungen ${c.jahr}: nur ${euro(c.erstattungBeiEinreichung)}.`}
+            </div>
+          ))}
         </fieldset>
 
         <Feld label="Antrag / Kopien" gruppe breit>
@@ -317,7 +334,7 @@ function BescheidFormular({ einreichung, onClose }: { einreichung: Einreichung; 
     setE((x) => ({ ...x, positionen: x.positionen.map((p) => (p.rechnungId === id ? { ...p, ...teil } : p)) }));
 
   const summe = e.positionen.reduce((s, p) => s + (p.erstattet ?? 0), 0);
-  const erw = person ? rechnungen.reduce((s, { r }) => s + erwartet(r, person, e.kostentraeger), 0) : 0;
+  const erw = person ? rechnungen.reduce((s, { r }) => s + erwartet(r, person, e.kostentraeger, state.rechnungen), 0) : 0;
 
   return (
     <Modal titel={`Bescheid – ${KT_NAME[e.kostentraeger]} – ${person?.name ?? ''}`} onClose={onClose} breit>
@@ -344,7 +361,7 @@ function BescheidFormular({ einreichung, onClose }: { einreichung: Einreichung; 
             className="klein"
             onClick={() => person && setE((x) => ({ ...x, positionen: x.positionen.map((p) => {
               const r = rechnungen.find((y) => y.r.id === p.rechnungId)?.r;
-              return r ? { ...p, erstattet: erwartet(r, person, x.kostentraeger) } : p;
+              return r ? { ...p, erstattet: erwartet(r, person, x.kostentraeger, state.rechnungen) } : p;
             }) }))}
           >
             Alle wie erwartet übernehmen
@@ -367,7 +384,7 @@ function BescheidFormular({ einreichung, onClose }: { einreichung: Einreichung; 
                 <tr key={r.id}>
                   <td>{datum(r.datum)} · {r.leistungserbringer}</td>
                   <td className="zahl">{euro(r.betrag)}</td>
-                  <td className="zahl">{person && euro(erwartet(r, person, e.kostentraeger))}</td>
+                  <td className="zahl">{person && euro(erwartet(r, person, e.kostentraeger, state.rechnungen))}</td>
                   <td><BetragFeld wert={p.erstattet} onChange={(c) => setPos(r.id, { erstattet: c })} /></td>
                   <td><input value={p.bemerkung ?? ''} onChange={(ev) => setPos(r.id, { bemerkung: ev.target.value })} /></td>
                 </tr>
@@ -457,7 +474,7 @@ function Belegliste({ einreichung: e, onClose }: { einreichung: Einreichung; onC
             </tr>
           </tfoot>
         </table>
-        {rs.some((r) => !traegerFuer(r.art).includes(e.kostentraeger)) && <p className="rot">Achtung: enthält Rechnungen, die nicht zu diesem Kostenträger passen.</p>}
+        {person && rs.some((r) => !traegerFuer(r.art, person).includes(e.kostentraeger)) && <p className="rot">Achtung: enthält Rechnungen, die nicht zu diesem Kostenträger passen.</p>}
       </div>
       <div className="aktionen">
         <span className="abstand" />

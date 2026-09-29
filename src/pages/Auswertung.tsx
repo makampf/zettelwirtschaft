@@ -29,7 +29,7 @@ export default function Auswertung() {
       .sort((a, b) => a.personId.localeCompare(b.personId) || a.datum.localeCompare(b.datum))
       .map((r) => {
         const p = personById(r.personId)!;
-        const u = rechnungUebersicht(r, p, state.einreichungen);
+        const u = rechnungUebersicht(r, p, state);
         const erst = (kt: Kostentraeger) => u.infos.find((i) => i.kt === kt && i.status === 'erstattet')?.erstattet ?? 0;
         return [text(p.name), datum(r.datum), ART_NAME[r.art], text(r.leistungserbringer), text(r.rechnungsnummer), text(r.beschreibung), zahl(r.betrag), datum(r.bezahltAm).replace('–', ''), zahl(erst('beihilfe')), zahl(erst('pkv')), zahl(erst('ppv')), zahl(u.ausstehend), zahl(u.eigenanteil)].join(';');
       });

@@ -1,3 +1,4 @@
+import { migriere } from './migration';
 import type { AppState } from './types';
 
 // Alle Daten bleiben lokal im Browser (IndexedDB). Es gibt keinen Server.
@@ -31,7 +32,8 @@ async function tx<T>(store: string, modus: IDBTransactionMode, fn: (s: IDBObject
 }
 
 export async function ladeState(): Promise<AppState | undefined> {
-  return tx<AppState | undefined>('kv', 'readonly', (s) => s.get(STATE_KEY));
+  const s = await tx<AppState | undefined>('kv', 'readonly', (st) => st.get(STATE_KEY));
+  return s && migriere(s);
 }
 
 export async function speichereState(state: AppState): Promise<void> {

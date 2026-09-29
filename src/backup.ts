@@ -1,4 +1,5 @@
 import { ladeDatei } from './db';
+import { migriere } from './migration';
 import type { AppState } from './types';
 
 export const BACKUP_FORMAT = 'rechnungsmanager-backup';
@@ -45,5 +46,6 @@ export async function backupLesen(datei: Blob): Promise<{ state: AppState; datei
     const inhalt = b.dateien?.[d.id];
     if (inhalt) dateien.set(d.id, new Blob([vonBase64(inhalt)], { type: d.typ }));
   }
-  return { state: { ...b.state, dateien: (b.state.dateien ?? []).filter((d) => dateien.has(d.id)) }, dateien };
+  const state = migriere(b.state);
+  return { state: { ...state, dateien: (state.dateien ?? []).filter((d) => dateien.has(d.id)) }, dateien };
 }

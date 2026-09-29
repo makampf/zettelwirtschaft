@@ -8,10 +8,15 @@ Alle Daten bleiben **lokal im Browser** (IndexedDB). Es gibt keinen Server, kein
 
 ## Funktionen
 
-- **Personen** mit Beihilfestelle, Bemessungssätzen (getrennt für Krankheit/Pflege), Antragsfrist sowie PKV/PPV mit Erstattungsquote
+- **Personen** mit oder ohne Beihilfeberechtigung (Beihilfestelle, Bemessungssätze getrennt für Krankheit/Pflege, Antragsfrist)
+  sowie PKV/PPV mit Erstattungsquote, **Selbstbehalt** (z. B. 20 % der Erstattung, max. 400 €/Jahr) und **Beitragsrückerstattung**
 - **Rechnungen** erfassen (Krankheit oder Pflege) inkl. Belegen als PDF/Foto, Zahlungsziel und Bezahlt-Datum
   - erwartete Erstattung wird aus den Quoten berechnet und kann pro Rechnung überschrieben werden (z. B. bei Pflege-Höchstbeträgen)
-  - „Nicht bei PKV einreichen“, z. B. um die Beitragsrückerstattung zu erhalten
+  - **Vorsorgeuntersuchungen** markieren: ohne Selbstbehalt und unschädlich für die Beitragsrückerstattung
+  - Selbstbehalt wird je Kalenderjahr in Reihenfolge der Rechnungsdaten angerechnet, bis der Höchstbetrag erreicht ist
+- **Beitragsrückerstattung (BRE)**: Neue Rechnungen werden bei der PKV zunächst zurückgehalten. Die Übersicht vergleicht je Jahr
+  die mögliche Erstattung (nach Selbstbehalt) mit der BRE und empfiehlt *einreichen* oder *zurückhalten* – mit einem Klick umsetzbar.
+  Beim Anlegen einer PKV-Einreichung warnt die App, wenn dadurch die BRE eines Jahres entfällt.
 - **Einreichungen**: offene Rechnungen je Person und Stelle bündeln, Antragsnummer und Weg (App, Post …) festhalten,
   Belegliste zum Beilegen drucken
 - **Bescheide** erfassen: tatsächlich erstattete Beträge und Kürzungsgründe je Rechnung; abgelehnte Rechnungen können erneut eingereicht werden
@@ -21,7 +26,7 @@ Alle Daten bleiben **lokal im Browser** (IndexedDB). Es gibt keinen Server, kein
 - **Sicherung**: kompletter Export/Import inkl. Belegen als JSON-Datei
 
 Statuslogik je Rechnung und Stelle: *noch einreichen* → *eingereicht* → *erstattet* / *abgelehnt* (oder *wird nicht eingereicht*).
-Krankheitsrechnungen gehen an Beihilfe + PKV, Pflegerechnungen an Beihilfe + PPV.
+Krankheitsrechnungen gehen an Beihilfe + PKV, Pflegerechnungen an Beihilfe + PPV (ohne Beihilfeberechtigung nur an PKV bzw. PPV).
 
 ## Benutzung
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { beihilfeFristEnde, erwartet, quote, rechnungUebersicht, traegerFuer, traegerInfo } from '../calc';
+import { beihilfeFristEnde, erwartet, quote, rechnungUebersicht, selbstbehalt, standardZurueckhalten, traegerFuer, traegerInfo } from '../calc';
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, StatusBadge, useDateienSpeichern } from '../components/ui';
 import { datum, euro, heute, neueId } from '../format';
 import { useNav } from '../nav';
@@ -45,7 +45,7 @@ export default function Rechnungen() {
       .filter((r) => !s || [r.leistungserbringer, r.rechnungsnummer, r.beschreibung, r.notiz].some((t) => t.toLowerCase().includes(s)))
       .map((r) => ({ r, person: personById(r.personId)! }))
       .filter((z) => z.person)
-      .map((z) => ({ ...z, u: rechnungUebersicht(z.r, z.person, state.einreichungen) }))
+      .map((z) => ({ ...z, u: rechnungUebersicht(z.r, z.person, state) }))
       .filter(({ r, u }) => {
         switch (filter) {
           case 'einreichen': return u.infos.some((i) => i.status === 'offen');
@@ -109,7 +109,7 @@ export default function Rechnungen() {
                   <td>{datum(r.datum)}</td>
                   <td><PersonChip person={person} /></td>
                   <td>
-                    <div>{r.leistungserbringer || '–'}{r.dateiIds.length > 0 && ' 📎'}</div>
+                    <div>{r.leistungserbringer || '–'}{r.dateiIds.length > 0 && ' 📎'}{r.vorsorge && <span className="badge tag">Vorsorge</span>}</div>
                     {(r.beschreibung || r.rechnungsnummer) && <small className="grau">{[r.rechnungsnummer && `Nr. ${r.rechnungsnummer}`, r.beschreibung].filter(Boolean).join(' · ')}</small>}
                   </td>
                   <td>{ART_NAME[r.art]}</td>
@@ -155,6 +155,7 @@ function leereRechnung(personId: string, art: Leistungsart = 'krankheit'): Rechn
     rechnungsnummer: '',
     beschreibung: '',
     betrag: 0,
+    vorsorge: false,
     nichtEinreichen: [],
     erwartetManuell: {},
     dateiIds: [],
@@ -181,8 +182,21 @@ export function RechnungFormular({
   const [dateiIds, setDateiIds] = useState(r.dateiIds);
   const [neueDateien, setNeueDateien] = useState<File[]>([]);
   const [speichert, setSpeichert] = useState(false);
+  // Bei neuen Rechnungen wird „Zurückhalten (BRE)“ vorbelegt, bis die Checkbox von Hand geändert wird.
+  const [pkvManuell, setPkvManuell] = useState(!!rechnung);
 
   const person = personById(r.personId);
+
+  useEffect(() => {
+    if (pkvManuell || !person) return;
+    const halten = standardZurueckhalten(r, person, state);
+    setR((x) => {
+      if (x.nichtEinreichen.includes('pkv') === halten) return x;
+      const ohne = x.nichtEinreichen.filter((k) => k !== 'pkv');
+      return { ...x, nichtEinreichen: halten ? [...ohne, 'pkv'] : ohne };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [r.personId, r.art, r.vorsorge, r.datum, pkvManuell, person, state]);
   const set = <K extends keyof Rechnung>(k: K, v: Rechnung[K]) => setR((x) => ({ ...x, [k]: v }));
   const vorschau = { ...r, betrag: betrag ?? 0 };
 
@@ -239,6 +253,14 @@ export function RechnungFormular({
           <Feld label="Beschreibung" breit>
             <input value={r.beschreibung} placeholder="z. B. Behandlung 03/2026, Heimkosten September" onChange={(e) => set('beschreibung', e.target.value)} />
           </Feld>
+          {r.art === 'krankheit' && (
+            <Feld label="Vorsorge" hinweis="Ohne Selbstbehalt, gefährdet die Beitragsrückerstattung nicht">
+              <label className="checkbox">
+                <input type="checkbox" checked={r.vorsorge} onChange={(e) => set('vorsorge', e.target.checked)} />
+                Vorsorgeuntersuchung
+              </label>
+            </Feld>
+          )}
           <Feld label="Zahlbar bis">
             <input type="date" value={r.faelligAm ?? ''} onChange={(e) => set('faelligAm', e.target.value || undefined)} />
           </Feld>
@@ -254,20 +276,25 @@ export function RechnungFormular({
           <fieldset>
             <legend>Einreichung &amp; Erstattung</legend>
             <div className="traeger-liste">
-              {traegerFuer(r.art).map((kt) => (
+              {traegerFuer(r.art, person).map((kt) => (
                 <TraegerZeile
                   key={kt}
                   kt={kt}
                   rechnung={vorschau}
                   quoteProzent={quote(person, r.art, kt)}
-                  berechnet={erwartet({ ...vorschau, erwartetManuell: {} }, person, kt)}
-                  onChange={(teil) => setR((x) => ({ ...x, ...teil }))}
-                  status={rechnung ? traegerInfo(vorschau, person, kt, state.einreichungen) : undefined}
+                  berechnet={erwartet({ ...vorschau, erwartetManuell: {} }, person, kt, state.rechnungen)}
+                  selbstbehalt={kt === 'pkv' ? selbstbehalt(vorschau, person, state.rechnungen) : 0}
+                  bre={kt === 'pkv' && person.pkv.bre > 0 && !r.vorsorge}
+                  onChange={(teil) => {
+                    if (teil.nichtEinreichen) setPkvManuell(true);
+                    setR((x) => ({ ...x, ...teil }));
+                  }}
+                  status={rechnung ? traegerInfo(vorschau, person, kt, state) : undefined}
                   onEinreichung={(id) => nav.gehe('einreichungen', { einreichungId: id })}
                 />
               ))}
             </div>
-            {traegerFuer(r.art).includes('beihilfe') && r.datum && (
+            {traegerFuer(r.art, person).includes('beihilfe') && r.datum && (
               <small className="grau">Beihilfe-Antragsfrist ({person.beihilfe.fristMonate} Monate): bis {datum(beihilfeFristEnde(r, person))}</small>
             )}
           </fieldset>
@@ -312,6 +339,8 @@ function TraegerZeile({
   rechnung,
   quoteProzent,
   berechnet,
+  selbstbehalt,
+  bre,
   status,
   onChange,
   onEinreichung,
@@ -320,6 +349,8 @@ function TraegerZeile({
   rechnung: Rechnung;
   quoteProzent: number;
   berechnet: number;
+  selbstbehalt: number;
+  bre: boolean;
   status?: ReturnType<typeof traegerInfo>;
   onChange: (teil: Partial<Rechnung>) => void;
   onEinreichung: (id: string) => void;
@@ -350,7 +381,7 @@ function TraegerZeile({
               onChange({ nichtEinreichen: ev.target.checked ? [...rechnung.nichtEinreichen, kt] : rechnung.nichtEinreichen.filter((x) => x !== kt) })
             }
           />
-          Nicht bei {KT_KURZ[kt]} einreichen {kt === 'pkv' && <small className="grau">(z. B. wegen Beitragsrückerstattung)</small>}
+          {bre ? 'Zurückhalten für Beitragsrückerstattung' : `Nicht bei ${KT_KURZ[kt]} einreichen`}
         </label>
       )}
       {!nicht && (
@@ -369,6 +400,8 @@ function TraegerZeile({
           <small className="grau">{manuell == null ? `${quoteProzent} % laut Person` : 'manuell'}</small>
         </div>
       )}
+      {!nicht && manuell == null && selbstbehalt > 0 && <small className="grau">abzüglich {euro(selbstbehalt)} Selbstbehalt</small>}
+      {nicht && bre && <small className="grau">Wird bei der Entscheidung zur Beitragsrückerstattung berücksichtigt (siehe Übersicht).</small>}
     </div>
   );
 }
