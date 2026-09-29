@@ -40,7 +40,7 @@ function einreichung(teil: Partial<Einreichung> & { personId: string } & Pick<Ei
   return { id: Math.random().toString(36).slice(2), personIds: [personId], eingereichtAm: '2026-03-10', weg: 'app', referenz: '', status: 'eingereicht', dateiIds: [], notiz: '', ...rest };
 }
 
-/** Standarddaten: „Ich“ ohne Beihilfe (100 % PKV/PPV, 20 % SB bis 400 € für KV + PV, BRE 1.000 €), Oma/Opa mit 70 % Beihilfe + Tarif B. */
+/** Standarddaten: „Ich“ ohne Beihilfe (100 % PKV/PPV, 20 % SB bis 400 € für KV + PV, BRE 1.000 €), Oma/Opa mit 70 % Beihilfe und BRE. */
 function setup() {
   const state: AppState = startState();
   const [ich, oma, opa] = state.personen;
@@ -247,15 +247,15 @@ describe('Beitragsrückerstattung', () => {
     expect(breCheck(state, ohneBre, 2026)).toBeNull();
   });
 
-  it('Tarif B: hält nur den Versicherungsanteil zurück, auch bei unbekanntem BRE-Betrag', () => {
+  it('Beihilfe + Versicherung: hält nur den Versicherungsanteil zurück, auch bei unbekanntem BRE-Betrag', () => {
     const { state, oma } = setup();
-    expect(oma.pkv).toMatchObject({ tarif: 'Tarif B', breAktiv: true, bre: 0 });
+    expect(oma.pkv).toMatchObject({ breAktiv: true, bre: 0 });
     const r = rechnung({ personId: oma.id, betrag: 10000 });
     state.rechnungen.push(r);
     expect(standardZurueckhalten(r, oma, state)).toBe(true);
     const c = breCheck(state, oma, 2026)!;
     expect(c.empfehlung).toBe('unbekannt');
-    expect(c.erstattungBeiEinreichung).toBe(3000); // 30 % Tarif B, Beihilfe zählt nicht
+    expect(c.erstattungBeiEinreichung).toBe(3000); // 30 % Versicherung, Beihilfe zählt nicht
     const h = hinweise(state, '2026-09-29').filter((x) => x.personenSeite);
     expect(h.map((x) => x.personId)).toEqual([oma.id, state.personen[2].id]);
   });
@@ -344,9 +344,9 @@ describe('Migration', () => {
     expect(s.version).toBe(4);
     const [ich, oma, opa] = s.personen;
     expect(ich.beihilfe.berechtigt).toBe(false);
-    expect(ich.pkv).toMatchObject({ name: 'Musterversicherung', tarif: 'Komforttarif', quote: 100, selbstbehaltProzent: 20, selbstbehaltMax: 40000, bre: 100000, mitPflege: true });
+    expect(ich.pkv).toMatchObject({ quote: 100, selbstbehaltProzent: 20, selbstbehaltMax: 40000, bre: 100000, mitPflege: true });
     expect(oma.beihilfe.berechtigt).toBe(true);
-    expect(oma.pkv).toMatchObject({ name: 'Musterversicherung', tarif: 'Tarif B', quote: 30, selbstbehaltProzent: 0, breAktiv: true, bre: 0, mitPflege: false });
+    expect(oma.pkv).toMatchObject({ quote: 30, selbstbehaltProzent: 0, breAktiv: true, bre: 0, mitPflege: false });
     expect(ich.pkv.breAktiv).toBe(true);
     expect(oma.partnerId).toBe(opa.id);
     expect(opa.partnerId).toBe(oma.id);
@@ -374,7 +374,7 @@ describe('Migration', () => {
     for (const e of alt.einreichungen) { e.personId = e.personIds[0]; delete e.personIds; }
     const s = migriere(alt);
     expect(s.personen[0].pkv.mitPflege).toBe(true);
-    expect(s.personen[0].pkv.name).toBe('Musterversicherung');
+    expect(s.personen[0].pkv.breAktiv).toBe(true);
     expect(s.personen[1].partnerId).toBe(s.personen[2].id);
     expect(s.einreichungen[0].personIds).toEqual(['Oma']);
   });

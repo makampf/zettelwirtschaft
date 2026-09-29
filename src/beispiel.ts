@@ -1,8 +1,6 @@
 import { neueId } from './format';
 import type { AppState, Person } from './types';
 
-export const VERSICHERER = 'Musterversicherung';
-
 export function neuePerson(name: string, farbe: string, beihilfeSatz: number | null): Person {
   const satz = beihilfeSatz ?? 0;
   return {
@@ -16,15 +14,13 @@ export function neuePerson(name: string, farbe: string, beihilfeSatz: number | n
   };
 }
 
-/** Standardwerte für mich: nicht beihilfeberechtigt, Komforttarif (20 % SB bis 400 €/Jahr für KV + PV, BRE). */
+/** Standardwerte für „Ich“: nicht beihilfeberechtigt, 100 % Versicherung mit 20 % Selbstbehalt (max. 400 €/Jahr für KV + PV) und BRE. */
 export function eigeneStandardwerte(p: Person): Person {
   return {
     ...p,
     beihilfe: { ...p.beihilfe, berechtigt: false, satzKrankheit: 0, satzPflege: 0 },
     pkv: {
       ...p.pkv,
-      name: p.pkv.name || VERSICHERER,
-      tarif: p.pkv.tarif || 'Komforttarif',
       quote: 100,
       selbstbehaltProzent: 20,
       selbstbehaltMax: 40000,
@@ -32,20 +28,16 @@ export function eigeneStandardwerte(p: Person): Person {
       bre: 100000,
       mitPflege: true,
     },
-    ppv: { ...p.ppv, name: p.ppv.name || VERSICHERER, quote: 100 },
+    ppv: { ...p.ppv, quote: 100 },
   };
 }
 
-/** Standardwerte für die Großeltern: Beihilfe + Tarif B mit Beitragsrückerstattung (Betrag je Person noch offen). */
+/** Standardwerte für die Großeltern: Beihilfe (70 %) plus Versicherung mit Beitragsrückerstattung (Betrag noch offen). */
 export function grosselternStandardwerte(p: Person): Person {
-  return {
-    ...p,
-    pkv: { ...p.pkv, name: p.pkv.name || VERSICHERER, tarif: p.pkv.tarif || 'Tarif B', breAktiv: true },
-    ppv: { ...p.ppv, name: p.ppv.name || VERSICHERER },
-  };
+  return { ...p, pkv: { ...p.pkv, breAktiv: true } };
 }
 
-/** Startzustand: ich selbst (nur PKV) und die gemeinsam versicherten Großeltern (70 % Beihilfe + Tarif B). */
+/** Startzustand: ich selbst (nur Versicherung) und die gemeinsam versicherten Großeltern (70 % Beihilfe). */
 export function startState(): AppState {
   const oma = grosselternStandardwerte(neuePerson('Oma', '#db2777', 70));
   const opa = grosselternStandardwerte(neuePerson('Opa', '#059669', 70));
