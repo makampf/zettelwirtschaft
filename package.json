@@ -1,7 +1,7 @@
 {
   "name": "zettelwirtschaft",
   "private": true,
-  "version": "1.1.1",
+  "version": "1.2.0",
   "type": "module",
   "description": "Arzt- und Pflegerechnungen verwalten und bei Beihilfe, privater Kranken- und Pflegeversicherung einreichen",
   "license": "AGPL-3.0-only",

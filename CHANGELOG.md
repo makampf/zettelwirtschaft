@@ -2,6 +2,13 @@
 
 Alle Änderungen an der Zettelwirtschaft. Wird bei jedem Release automatisch aus den Commit-Nachrichten erzeugt.
 
+# [1.2.0](https://github.com/makampf/zettelwirtschaft/compare/v1.1.1...v1.2.0) (2026-09-29)
+
+
+### Features
+
+* treat private health and care insurance as one contract by default ([706d12b](https://github.com/makampf/zettelwirtschaft/commit/706d12b2666dc03656881f55f2d94fe119fc27ff))
+
 ## [1.1.1](https://github.com/makampf/zettelwirtschaft/compare/v1.1.0...v1.1.1) (2026-09-29)
 
 
