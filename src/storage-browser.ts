@@ -68,3 +68,15 @@ export const browserSpeicher: Speicher = {
     await this.speichere(state);
   },
 };
+
+/** Löscht alle im Browser gespeicherten Daten der App (Datenbestand und Belege). */
+export async function browserDatenLoeschen(): Promise<void> {
+  if (dbPromise) (await dbPromise.catch(() => undefined))?.close();
+  dbPromise = undefined;
+  await new Promise<void>((resolve, reject) => {
+    const req = indexedDB.deleteDatabase(DB_NAME);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+    req.onblocked = () => reject(new Error('Die App ist noch in einem anderen Tab geöffnet – bitte dort schließen und erneut versuchen.'));
+  });
+}

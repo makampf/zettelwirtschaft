@@ -3,6 +3,7 @@ import { startState } from './defaults';
 import { neueId } from './format';
 import { migriere } from './migration';
 import { speicherErmitteln, type Speicher } from './storage';
+import { browserDatenLoeschen } from './storage-browser';
 import type { AppState, FileMeta, Submission, Person, Invoice } from './types';
 
 interface Store {
@@ -36,20 +37,23 @@ function upsert<T extends { id: string }>(liste: T[], el: T): T[] {
 
 export function StoreProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState | null>(null);
-  const [fehler, setFehler] = useState<string | null>(null);
+  const [fehler, setFehler] = useState<{ text: string; art?: Speicher['art']; roh?: unknown } | null>(null);
   const [speicherFehler, setSpeicherFehler] = useState<string | null>(null);
   const [sp, setSp] = useState<Speicher | null>(null);
   // Zählt lokale Änderungen, damit ein Neuladen vom Server keine frischen Eingaben überschreibt
   const aenderungen = useRef(0);
 
   useEffect(() => {
+    let art: Speicher['art'] | undefined;
+    let roh: unknown;
     (async () => {
       const gefunden = await speicherErmitteln();
-      const roh = await gefunden.lade();
+      art = gefunden.art;
+      roh = await gefunden.lade();
       gefunden.uebernommen?.(roh);
       setSp(gefunden);
       setState(roh ? migriere(roh) : startState());
-    })().catch((e) => setFehler(String(e)));
+    })().catch((e) => setFehler({ text: String(e), art, roh }));
   }, []);
 
   const speichern = useCallback(
@@ -179,7 +183,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     };
   }, [state, sp, aendern, dateienEntfernen]);
 
-  if (fehler) return <div className="laden fehler">Fehler beim Laden: {fehler}</div>;
+  if (fehler) return <LadeFehler {...fehler} />;
   if (!store) return <div className="laden">Lade Daten …</div>;
   return (
     <Ctx.Provider value={store}>
@@ -191,5 +195,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       )}
       {children}
     </Ctx.Provider>
+  );
+}
+
+/** Daten lassen sich nicht laden (z. B. Stand einer älteren App-Version): im Browser-Speicher Neustart anbieten. */
+function LadeFehler({ text, art, roh }: { text: string; art?: Speicher['art']; roh?: unknown }) {
+  const [loeschFehler, setLoeschFehler] = useState<string | null>(null);
+  const herunterladen = () => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(roh, null, 2)], { type: 'application/json' }));
+    a.download = `zettelwirtschaft-alte-daten-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+  const neuBeginnen = async () => {
+    if (!confirm('Alle in diesem Browser gespeicherten Rechnungen, Einreichungen und Belege werden gelöscht. Fortfahren?')) return;
+    try {
+      await browserDatenLoeschen();
+      location.reload();
+    } catch (e) {
+      setLoeschFehler(e instanceof Error ? e.message : String(e));
+    }
+  };
+  return (
+    <div className="laden fehler">
+      <p>Fehler beim Laden: {text}</p>
+      {art === 'browser' && (
+        <>
+          <p className="grau">Die im Browser gespeicherten Daten stammen vermutlich von einer älteren Version der App.</p>
+          <div className="zeile" style={{ justifyContent: 'center' }}>
+            {roh != null && <button onClick={herunterladen}>Alte Daten herunterladen</button>}
+            <button className="primaer" onClick={() => void neuBeginnen()}>Browserdaten löschen und neu beginnen</button>
+          </div>
+          {loeschFehler && <p>{loeschFehler}</p>}
+        </>
+      )}
+    </div>
   );
 }

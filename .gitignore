@@ -18,4 +18,5 @@ server/dist
 *.dump
 *sicherung*.json
 *backup*.json
+*alte-daten*.json
 belege/
