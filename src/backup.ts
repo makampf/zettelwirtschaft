@@ -2,10 +2,12 @@ import { speicher } from './speicher';
 import { migriere } from './migration';
 import type { AppState } from './types';
 
-export const BACKUP_FORMAT = 'rechnungsmanager-backup';
+export const BACKUP_FORMAT = 'zettelwirtschaft-backup';
+/** Sicherungen aus der Zeit vor der Umbenennung bleiben einlesbar. */
+const ALTE_FORMATE = ['rechnungsmanager-backup'];
 
 interface Backup {
-  format: typeof BACKUP_FORMAT;
+  format: string;
   erstelltAm: string;
   state: AppState;
   /** Dateiinhalte als Base64, Schlüssel = Datei-ID. */
@@ -38,8 +40,9 @@ export async function backupErstellen(state: AppState): Promise<Blob> {
 
 export async function backupLesen(datei: Blob): Promise<{ state: AppState; dateien: Map<string, Blob> }> {
   const b = JSON.parse(await datei.text()) as Backup;
-  if (b?.format !== BACKUP_FORMAT || !b.state || !Array.isArray(b.state.personen)) {
-    throw new Error('Die Datei ist keine gültige Sicherung des Rechnungsmanagers.');
+  const bekannt = b?.format === BACKUP_FORMAT || ALTE_FORMATE.includes(b?.format);
+  if (!bekannt || !b.state || !Array.isArray(b.state.personen)) {
+    throw new Error('Die Datei ist keine gültige Sicherung der Zettelwirtschaft.');
   }
   const dateien = new Map<string, Blob>();
   for (const d of b.state.dateien ?? []) {

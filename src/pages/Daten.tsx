@@ -16,7 +16,7 @@ export default function Daten() {
       const blob = await backupErstellen(state);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `rechnungsmanager-sicherung-${heute()}.json`;
+      a.download = `zettelwirtschaft-sicherung-${heute()}.json`;
       a.click();
       URL.revokeObjectURL(a.href);
       setMeldung('Sicherung wurde heruntergeladen.');

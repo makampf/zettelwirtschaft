@@ -41,7 +41,7 @@ async function start() {
     ocrVerzeichnis: resolve(dirname(indexPfad), 'ocr'),
   });
   const port = Number(env.PORT ?? 8080);
-  serve({ fetch: app.fetch, port }, () => console.log(`Rechnungsmanager läuft auf Port ${port}`));
+  serve({ fetch: app.fetch, port }, () => console.log(`Zettelwirtschaft läuft auf Port ${port}`));
 }
 
 start().catch((e) => {

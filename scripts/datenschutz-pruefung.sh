@@ -6,7 +6,7 @@ cd "$(git rev-parse --show-toplevel)"
 
 if [ "$#" -gt 0 ]; then dateien=("$@"); else mapfile -t dateien < <(git ls-files); fi
 
-verboten='\.(pdf|jpe?g|png|gif|webp|heic|heif|tiff?|bmp|sql|dump|backup|bak)$|sicherung[^/]*\.json$|rechnungsmanager-sicherung'
+verboten='\.(pdf|jpe?g|png|gif|webp|heic|heif|tiff?|bmp|sql|dump|backup|bak)$|sicherung[^/]*\.json$|rechnungsmanager-sicherung|zettelwirtschaft-sicherung'
 fund=0
 for f in "${dateien[@]}"; do
   if printf '%s\n' "$f" | grep -qiE "$verboten"; then

@@ -1,9 +1,14 @@
 {
-  "name": "rechnungsmanager",
+  "name": "zettelwirtschaft",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Verwaltung von Arzt- und Pflegerechnungen mit Einreichungen bei Beihilfe, privater Kranken- und Pflegeversicherung",
+  "description": "Arzt- und Pflegerechnungen verwalten und bei Beihilfe, privater Kranken- und Pflegeversicherung einreichen",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/makampf/zettelwirtschaft.git"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build && tsc -p server/tsconfig.json",

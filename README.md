@@ -1,4 +1,7 @@
-# 🧾 Rechnungsmanager
+# 🧾 Zettelwirtschaft
+
+[![Release](https://img.shields.io/github/v/release/makampf/zettelwirtschaft)](https://github.com/makampf/zettelwirtschaft/releases)
+[![Lizenz: AGPL-3.0](https://img.shields.io/badge/Lizenz-AGPL--3.0-blue)](LICENSE)
 
 Web-App zur Verwaltung von Arzt-, Apotheken- und Pflegerechnungen und deren Einreichung bei
 **Beihilfe**, **privater Krankenversicherung (PKV)** und **privater Pflegeversicherung (PPV)** –
@@ -62,14 +65,14 @@ wo gerade gespeichert wird.
 ### Variante A: mit eigener Postgres (am einfachsten)
 
 ```bash
-git clone https://github.com/makampf/claudetest.git rechnungsmanager && cd rechnungsmanager
+git clone https://github.com/makampf/zettelwirtschaft.git && cd zettelwirtschaft
 cp .env.example .env        # Passwörter in .env anpassen!
 docker compose up -d        # oder: docker compose up -d --build  (Image selbst bauen)
 ```
 
 Danach ist die App unter `http://<homeserver>:8080` erreichbar (Anmeldung mit `APP_USER` / `APP_PASSWORD` aus der `.env`).
 
-Das fertige Image `ghcr.io/makampf/claudetest:latest` baut GitHub Actions bei jedem Push. Ist das Paket auf GitHub privat,
+Das fertige Image `ghcr.io/makampf/zettelwirtschaft` baut GitHub Actions bei jedem Release (Tags `latest` und die Versionsnummer, z. B. `1.2.0`). Ist das Paket auf GitHub privat,
 vorher `docker login ghcr.io` ausführen oder das Paket unter *GitHub → Packages → Package settings* öffentlich schalten –
 alternativ mit `docker compose up -d --build` lokal bauen.
 
@@ -85,10 +88,10 @@ CREATE DATABASE rechnungen OWNER rechnungen;
 Dann nur den App-Container starten (Tabellen legt die App beim ersten Start selbst an):
 
 ```bash
-docker run -d --name rechnungsmanager --restart unless-stopped -p 8080:8080 \
+docker run -d --name zettelwirtschaft --restart unless-stopped -p 8080:8080 \
   -e DATABASE_URL=postgres://rechnungen:geheim@<postgres-host>:5432/rechnungen \
   -e APP_USER=familie -e APP_PASSWORD=bitte-aendern \
-  ghcr.io/makampf/claudetest:latest
+  ghcr.io/makampf/zettelwirtschaft:latest
 ```
 
 Läuft die vorhandene Postgres selbst in Docker, den Container in dasselbe Docker-Netzwerk hängen (`--network <netz>`) und als
@@ -121,7 +124,7 @@ Die Anmeldung erfolgt per HTTP Basic Auth und ist ohne HTTPS nicht abhörsicher.
 ## Online-Version
 
 Die App wird bei jedem Push automatisch über GitHub Pages veröffentlicht:
-**https://makampf.github.io/claudetest/**
+**https://makampf.github.io/zettelwirtschaft/**
 
 Veröffentlicht wird nur das Programm – die eingegebenen Daten bleiben weiterhin ausschließlich im Browser des jeweiligen Geräts.
 Daten zwischen Geräten (z. B. PC und Handy) lassen sich über **Daten → Sicherung** übertragen.
@@ -147,3 +150,23 @@ Daten zwischen Geräten (z. B. PC und Handy) lassen sich über **Daten → Siche
 TEST_DATABASE_URL=postgres://postgres@localhost:5432/test npm test   # Achtung: leert diese Datenbank
 DATABASE_URL=postgres://… npm run server:dev                         # Server im Entwicklungsmodus
 ```
+
+## Versionen und Releases
+
+Die Versionsnummer steht unten in der App. Releases entstehen automatisch nach [Semantic Versioning](https://semver.org/lang/de/):
+Bei jedem Push auf `main` wertet [semantic-release](https://semantic-release.gitbook.io/) die Commit-Nachrichten aus
+([Conventional Commits](https://www.conventionalcommits.org/de/)), erhöht die Version, schreibt das [CHANGELOG](CHANGELOG.md),
+legt ein GitHub-Release an und veröffentlicht danach GitHub Pages und das Docker-Image.
+
+| Commit | Wirkung |
+|---|---|
+| `fix: …` | Patch-Release, z. B. 1.2.0 → 1.2.1 |
+| `feat: …` | Minor-Release, z. B. 1.2.0 → 1.3.0 |
+| `feat!: …` oder `BREAKING CHANGE:` im Text | Major-Release, z. B. 1.2.0 → 2.0.0 |
+| `docs:`, `chore:`, `ci:`, `test:`, `refactor:` … | kein Release |
+
+Commit-Nachrichten werden auf Englisch geschrieben; ein Git-Hook prüft das Format (aktiviert durch `npm install`).
+
+## Lizenz
+
+[GNU Affero General Public License v3.0](LICENSE). Mitgelieferte Bibliotheken stehen unter eigenen Lizenzen, siehe [NOTICE](NOTICE).

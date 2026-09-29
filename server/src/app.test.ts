@@ -9,7 +9,7 @@ const url = process.env.TEST_DATABASE_URL;
 describe.skipIf(!url)('Server-API', () => {
   let pool: pg.Pool;
   let db: Datenbank;
-  const H = { 'x-rechnungsmanager': '1', 'content-type': 'application/json' };
+  const H = { 'x-zettelwirtschaft': '1', 'content-type': 'application/json' };
 
   beforeAll(async () => {
     pool = new pg.Pool({ connectionString: url });
@@ -85,7 +85,7 @@ describe.skipIf(!url)('Server-API', () => {
     const inhalt = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0, 255]);
     const res = await app.request('/api/dateien/d1', {
       method: 'PUT',
-      headers: { 'x-rechnungsmanager': '1', 'content-type': 'application/pdf', 'x-dateiname': encodeURIComponent('Rechnung Ärztin.pdf') },
+      headers: { 'x-zettelwirtschaft': '1', 'content-type': 'application/pdf', 'x-dateiname': encodeURIComponent('Rechnung Ärztin.pdf') },
       body: inhalt,
     });
     expect(res.status).toBe(200);
@@ -97,7 +97,7 @@ describe.skipIf(!url)('Server-API', () => {
     await app.request('/api/aenderungen', { method: 'POST', headers: H, body: JSON.stringify({ version: 4 }) });
     expect((await (await app.request('/api/state')).json()).state.dateien).toEqual([{ id: 'd1', name: 'Rechnung Ärztin.pdf', typ: 'application/pdf', groesse: 6 }]);
 
-    const gross = await app.request('/api/dateien/d2', { method: 'PUT', headers: { 'x-rechnungsmanager': '1' }, body: new Uint8Array(2000) });
+    const gross = await app.request('/api/dateien/d2', { method: 'PUT', headers: { 'x-zettelwirtschaft': '1' }, body: new Uint8Array(2000) });
     expect(gross.status).toBe(413);
     await app.request('/api/dateien/d1', { method: 'DELETE', headers: H });
     expect((await app.request('/api/dateien/d1')).status).toBe(404);

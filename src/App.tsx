@@ -46,7 +46,7 @@ export default function App() {
     <NavCtx.Provider value={nav}>
       <header className="kopf">
         <div className="marke">
-          🧾 Rechnungsmanager{' '}
+          🧾 Zettelwirtschaft{' '}
           <span className="speicherort" title={speicherArt === 'server' ? 'Daten liegen in der Server-Datenbank' : 'Daten liegen nur in diesem Browser'}>
             {speicherArt === 'server' ? '· Server' : '· Browser'}
           </span>

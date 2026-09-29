@@ -19,7 +19,7 @@ export interface Optionen {
 const OCR_TYPEN: Record<string, string> = { '.js': 'text/javascript', '.wasm': 'application/wasm', '.gz': 'application/octet-stream' };
 
 /** Pflicht-Header für ändernde Anfragen: erzwingt einen CORS-Preflight und verhindert so CSRF von fremden Seiten. */
-export const CSRF_HEADER = 'x-rechnungsmanager';
+export const CSRF_HEADER = 'x-zettelwirtschaft';
 
 function gleich(a: string, b: string): boolean {
   const x = Buffer.from(a);
@@ -54,7 +54,7 @@ export function erstelleApp(db: Datenbank, opt: Optionen = {}): Hono {
       const kopf = c.req.header('authorization') ?? '';
       const [art, wert] = kopf.split(' ');
       const ok = art === 'Basic' && wert && gleich(Buffer.from(wert, 'base64').toString(), erwartet);
-      if (!ok) return c.text('Anmeldung erforderlich', 401, { 'WWW-Authenticate': 'Basic realm="Rechnungsmanager", charset="UTF-8"' });
+      if (!ok) return c.text('Anmeldung erforderlich', 401, { 'WWW-Authenticate': 'Basic realm="Zettelwirtschaft", charset="UTF-8"' });
       await next();
     });
   }

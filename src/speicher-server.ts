@@ -7,7 +7,7 @@ type Sammlung = (typeof SAMMLUNGEN)[number];
 type Stand = { version: number; daten: Record<Sammlung, Map<string, string>> };
 
 /** Pflicht-Header für ändernde Anfragen (CSRF-Schutz, siehe server/src/app.ts). */
-const KOPF = { 'X-Rechnungsmanager': '1' };
+const KOPF = { 'X-Zettelwirtschaft': '1' };
 
 async function api<T>(methode: string, pfad: string, body?: BodyInit, kopf: Record<string, string> = {}): Promise<T> {
   const res = await fetch(pfad, { method: methode, body, headers: { ...KOPF, ...kopf }, credentials: 'same-origin' });

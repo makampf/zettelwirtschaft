@@ -1,4 +1,4 @@
-# Rechnungsmanager mit eigener Postgres-Datenbank.
+# Zettelwirtschaft mit eigener Postgres-Datenbank.
 # Start:  cp .env.example .env  (Passwörter anpassen)  &&  docker compose up -d
 # Danach: http://<homeserver>:8080
 #
@@ -6,7 +6,7 @@
 # auf die vorhandene Datenbank zeigen lassen (siehe README).
 services:
   app:
-    image: ghcr.io/makampf/claudetest:latest
+    image: ghcr.io/makampf/zettelwirtschaft:latest
     build: .
     restart: unless-stopped
     ports:
