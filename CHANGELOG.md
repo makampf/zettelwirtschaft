@@ -2,6 +2,13 @@
 
 Alle Änderungen an der Zettelwirtschaft. Wird bei jedem Release automatisch aus den Commit-Nachrichten erzeugt.
 
+# [1.3.0](https://github.com/makampf/zettelwirtschaft/compare/v1.2.0...v1.3.0) (2026-09-30)
+
+
+### Features
+
+* read benefit statements, bulk edit invoices and release held-back invoices ([138b460](https://github.com/makampf/zettelwirtschaft/commit/138b46094b1fc4146c5ff532484c439bc6866008))
+
 # [1.2.0](https://github.com/makampf/zettelwirtschaft/compare/v1.1.1...v1.2.0) (2026-09-29)
 
 
