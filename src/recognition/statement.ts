@@ -110,14 +110,21 @@ export function abrechnungZuordnen(a: Abrechnung, rechnungen: Invoice[]): { zuor
   return { zuordnungen, offen };
 }
 
+/** Wurde die Position schon abgerechnet (Erstattung eingetragen oder mit Bescheiddatum gespeichert, nicht „noch offen“)? */
+export function abgerechnet(p: SubmissionItem): boolean {
+  return !p.pending && (p.reimbursed != null || p.decisionDate != null);
+}
+
 /**
  * Überträgt eine Zuordnung auf die Positionen einer Einreichung. Rechnungen, die in der Abrechnung nicht vorkommen,
- * sind darin noch nicht abgerechnet und werden als „noch offen“ markiert.
+ * sind darin noch nicht abgerechnet und werden als „noch offen“ markiert – außer sie wurden schon mit einer früheren
+ * Abrechnung erledigt (eine Einreichung kann in mehreren Abrechnungen beschieden werden).
  */
-export function positionenAusAbrechnung(items: SubmissionItem[], zuordnungen: Zuordnung[]): SubmissionItem[] {
+export function positionenAusAbrechnung(items: SubmissionItem[], zuordnungen: Zuordnung[], datum?: string): SubmissionItem[] {
   return items.map((p) => {
     const z = zuordnungen.find((x) => x.invoiceId === p.invoiceId);
-    if (!z) return { ...p, pending: true, reimbursed: undefined };
-    return z.pending ? { ...p, pending: true, reimbursed: undefined } : { ...p, pending: undefined, reimbursed: z.reimbursed ?? p.reimbursed };
+    if (!z) return abgerechnet(p) ? p : { ...p, pending: true, reimbursed: undefined, decisionDate: undefined, fileId: undefined };
+    if (z.pending) return { ...p, pending: true, reimbursed: undefined, decisionDate: undefined, fileId: undefined };
+    return { ...p, pending: undefined, reimbursed: z.reimbursed ?? p.reimbursed, decisionDate: datum ?? p.decisionDate };
   });
 }

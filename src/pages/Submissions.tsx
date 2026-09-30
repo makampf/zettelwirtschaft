@@ -3,7 +3,7 @@ import { breCheck, breRelevant, einreichbareRechnungen, erwartetFuerRechnung, tr
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, useDateienSpeichern } from '../components/ui';
 import { datum, euro, heute, neueId } from '../format';
 import { useNav } from '../nav';
-import { abrechnungAuslesen, abrechnungZuordnen, positionenAusAbrechnung, type AbrechnungsZeile } from '../recognition/statement';
+import { abgerechnet, abrechnungAuslesen, abrechnungZuordnen, positionenAusAbrechnung, type AbrechnungsZeile } from '../recognition/statement';
 import { textAusDatei } from '../recognition/text';
 import { useStore } from '../store';
 import {
@@ -167,7 +167,11 @@ export default function Submissions() {
                     ) : '–'}
                   </td>
                   <td>
-                    {e.status === 'decided' ? (
+                    {e.status === 'decided' && e.items.some((p) => p.pending) ? (
+                      <span className="badge status-eingereicht" title={`Letzter Bescheid ${datum(e.decisionDate)}`}>
+                        teilweise beschieden · {e.items.filter((p) => p.pending).length} offen
+                      </span>
+                    ) : e.status === 'decided' ? (
                       <span className="badge status-erstattet">Bescheid {datum(e.decisionDate)}</span>
                     ) : (
                       <span className="badge status-eingereicht">wartet seit {Math.max(0, Math.round((Date.now() - new Date(e.submittedDate).getTime()) / 86_400_000))} Tagen</span>
@@ -459,7 +463,7 @@ function traegerName(p: Person, kt: Payer): string {
 }
 
 function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: Submission; beleg?: File; text?: string; onClose: () => void }) {
-  const { state, personById, speichereEinreichung } = useStore();
+  const { state, personById, speichereEinreichung, dateiOeffnen } = useStore();
   const dateienSpeichern = useDateienSpeichern();
   const personen = einreichung.personIds.map(personById);
   const [e, setE] = useState(einreichung);
@@ -468,6 +472,8 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
   const rechnungen = e.items.map((p) => ({ p, r: state.invoices.find((r) => r.id === p.invoiceId) })).filter((x): x is { p: typeof x.p; r: Invoice } => !!x.r);
   const [leseStatus, setLeseStatus] = useState<{ art: 'laeuft' | 'ok' | 'leer' | 'fehler'; text: string; offen?: AbrechnungsZeile[] } | null>(null);
   const [aus, setAus] = useState<Set<string>>(new Set());
+  // Aus welcher (neu hinzugefügten) Abrechnung stammt die Erstattung einer Rechnung?
+  const [quelle, setQuelle] = useState<Map<string, File>>(new Map());
   // Für die Rückfrage beim Schließen
   const [angefasst, setAngefasst] = useState(false);
   const geaendert = angefasst || neueDateien.length > 0 || dateiIds.join() !== einreichung.fileIds.join();
@@ -483,16 +489,29 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
     try {
       const a = abrechnungAuslesen(gelesen ?? (await textAusDatei(datei, (t) => setLeseStatus({ art: 'laeuft', text: t }))));
       const { zuordnungen, offen } = abrechnungZuordnen(a, rechnungen.map((x) => x.r));
-      setE((x) => ({ ...x, decisionDate: a.date ?? x.decisionDate, items: positionenAusAbrechnung(x.items, zuordnungen) }));
+      setE((x) => ({
+        ...x,
+        // Bescheiddatum der Einreichung = jüngste Abrechnung
+        decisionDate: a.date && (!x.decisionDate || a.date > x.decisionDate) ? a.date : x.decisionDate,
+        items: positionenAusAbrechnung(x.items, zuordnungen, a.date),
+      }));
       setAus(new Set(zuordnungen.map((z) => z.invoiceId)));
+      setQuelle((q) => {
+        const n = new Map(q);
+        for (const z of zuordnungen) if (!z.pending) n.set(z.invoiceId, datei);
+        return n;
+      });
       if (!neueDateien.includes(datei)) setNeueDateien((n) => [...n, datei]);
       const pending = zuordnungen.filter((z) => z.pending).length;
-      const fehlend = rechnungen.length - zuordnungen.length;
+      const zugeordnet = new Set(zuordnungen.map((z) => z.invoiceId));
+      const fehlend = e.items.filter((p) => !zugeordnet.has(p.invoiceId) && !abgerechnet(p)).length;
+      const frueher = e.items.filter((p) => !zugeordnet.has(p.invoiceId) && abgerechnet(p)).length;
       const erstattet = zuordnungen.reduce((s, z) => s + (z.reimbursed ?? 0), 0);
       const teile = [
         `${zuordnungen.length} von ${rechnungen.length} Rechnung(en) zugeordnet`,
         pending && `${pending} noch offen`,
         fehlend > 0 && `${fehlend} nicht in der Abrechnung – als „noch offen“ markiert`,
+        frueher > 0 && `${frueher} bereits früher abgerechnet – unverändert`,
         a.total != null && (a.total === erstattet ? `Gesamtsumme ${euro(a.total)} stimmt überein` : `Gesamtsumme laut Abrechnung ${euro(a.total)}, zugeordnet ${euro(erstattet)} – bitte prüfen`),
       ].filter(Boolean);
       setLeseStatus(
@@ -522,12 +541,20 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
         onSubmit={async (ev) => {
           ev.preventDefault();
           const ids = await dateienSpeichern(einreichung.fileIds, dateiIds, neueDateien);
-          speichereEinreichung({ ...e, status: 'decided', decisionDate: e.decisionDate || heute(), fileIds: ids });
+          const neuIds = ids.slice(ids.length - neueDateien.length);
+          const datum = e.decisionDate || heute();
+          const items = e.items.map((p) => {
+            const f = quelle.get(p.invoiceId);
+            const fileId = f && neueDateien.includes(f) ? neuIds[neueDateien.indexOf(f)] : p.fileId && ids.includes(p.fileId) ? p.fileId : undefined;
+            // Abgerechnete Positionen behalten ihr eigenes Bescheiddatum; neu erfasste bekommen das des Formulars
+            return p.pending ? { ...p, decisionDate: undefined, fileId: undefined } : { ...p, decisionDate: p.decisionDate ?? datum, fileId };
+          });
+          speichereEinreichung({ ...e, items, status: 'decided', decisionDate: datum, fileIds: ids });
           onClose();
         }}
       >
         <div className="raster">
-          <Feld label="Bescheid vom">
+          <Feld label="Bescheid vom" hinweis="Jüngster Bescheid – je Rechnung siehe Tabelle">
             <input type="date" value={e.decisionDate ?? heute()} onChange={(ev) => setE({ ...e, decisionDate: ev.target.value })} required />
           </Feld>
           <Feld label="Gutschrift auf Konto am">
@@ -590,6 +617,7 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
                 <th className="zahl">Erwartet</th>
                 <th>Erstattet</th>
                 <th title="Im Bescheid noch nicht abgerechnet">Noch offen</th>
+                <th>Bescheid vom</th>
                 <th>Bemerkung (z. B. Kürzungsgrund)</th>
               </tr>
             </thead>
@@ -608,6 +636,12 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
                       onChange={(ev) => setPos(r.id, { pending: ev.target.checked || undefined, reimbursed: ev.target.checked ? undefined : p.reimbursed })}
                     />
                   </td>
+                  <td className="nowrap">
+                    {p.pending ? '–' : datum(p.decisionDate ?? e.decisionDate)}
+                    {!p.pending && p.fileId && !quelle.has(r.id) && (
+                      <> <button type="button" className="link" title="Abrechnung öffnen" onClick={() => dateiOeffnen(p.fileId!)}>📎</button></>
+                    )}
+                  </td>
                   <td><input value={p.remark ?? ''} onChange={(ev) => setPos(r.id, { remark: ev.target.value })} /></td>
                 </tr>
               ))}
@@ -618,6 +652,7 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
                 <td className="zahl">{euro(rechnungen.reduce((s, { r }) => s + r.amount, 0))}</td>
                 <td className="zahl">{euro(erw)}</td>
                 <td className="zahl">{euro(summe)}</td>
+                <td></td>
                 <td></td>
                 <td>{summe !== erw && <span className={summe < erw ? 'rot' : 'ok'}>Abweichung {euro(summe - erw)}</span>}</td>
               </tr>

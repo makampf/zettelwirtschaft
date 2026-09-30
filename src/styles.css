@@ -130,6 +130,7 @@ legend { font-weight: 600; padding: 0 0.35rem; }
 .tabelle .auswahl { width: 2rem; padding-right: 0; }
 .tabelle tr.markiert td { background: var(--blau-bg); }
 .tabelle tr.erkannt td { background: var(--gelb-bg); }
+.nowrap { white-space: nowrap; }
 .lesestatus details { margin-top: 0.3rem; }
 .datei .doppelt { flex-basis: 100%; color: var(--gelb); background: var(--gelb-bg); padding: 0.2rem 0.45rem; border-radius: 6px; }
 .leer { padding: 2rem; text-align: center; color: var(--grau); background: var(--flaeche); border: 1px dashed var(--rand); border-radius: 12px; margin-bottom: 1rem; }

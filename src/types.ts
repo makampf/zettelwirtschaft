@@ -129,6 +129,10 @@ export interface SubmissionItem {
   remark?: string;
   /** Im Bescheid noch nicht abgerechnet („noch offen“) – gilt weiter als eingereicht. */
   pending?: boolean;
+  /** Datum des Bescheids bzw. der Leistungsabrechnung, mit dem diese Rechnung abgerechnet wurde. */
+  decisionDate?: string;
+  /** Beleg dieses Bescheids (eine Einreichung kann in mehreren Abrechnungen erledigt werden). */
+  fileId?: string;
 }
 
 export type SubmissionStatus = 'submitted' | 'decided';

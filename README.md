@@ -45,7 +45,8 @@ oder, in der GitHub-Pages- bzw. Datei-Version, **nur lokal im Browser** (Indexed
 - **Bescheide** erfassen: tatsächlich erstattete Beträge und Kürzungsgründe je Rechnung; abgelehnte Rechnungen können erneut eingereicht werden
   - **Abrechnung einlesen:** PDF oder Foto einer Leistungsabrechnung bzw. eines Beihilfebescheids hochladen – die Positionen
     werden über Rechnungsdatum und Betrag den Rechnungen der passenden Einreichung zugeordnet, Erstattungen, Datum und
-    „noch offen“ vorausgefüllt und mit der Gesamtsumme abgeglichen. Rechnungen, die in der Abrechnung fehlen, gelten als noch offen.
+    „noch offen“ vorausgefüllt und mit der Gesamtsumme abgeglichen. Rechnungen, die in der Abrechnung fehlen, gelten als noch offen;
+    wird eine Einreichung in mehreren Abrechnungen beschieden, behält jede Rechnung ihr eigenes Bescheiddatum und ihren Beleg.
 - **Übersicht** je Person: was ist noch zu bezahlen, was noch einzureichen, welche Erstattungen stehen aus, Eigenanteil im Jahr
 - **Hinweise** auf überfällige Zahlungen, ablaufende Beihilfe-Antragsfristen und Einreichungen, die seit über 6 Wochen ohne Bescheid sind
 - **Auswertung** je Jahr und Person mit CSV-Export (hilfreich für außergewöhnliche Belastungen in der Steuererklärung)

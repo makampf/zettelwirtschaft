@@ -655,6 +655,9 @@ function TraegerZeile({
   const nicht = rechnung.heldBack.includes(kt);
   const manuell = rechnung.expectedOverride[kt];
   const e = status?.einreichung;
+  const pos = e?.items.find((p) => p.invoiceId === rechnung.id);
+  const { dateiOeffnen } = useStore();
+  const bescheidVom = pos && !pos.pending && e?.status === 'decided' ? (pos.decisionDate ?? e.decisionDate) : undefined;
   return (
     <div className="traeger">
       <div className="traeger-kopf">
@@ -666,7 +669,11 @@ function TraegerZeile({
           <button type="button" className="link" onClick={() => onEinreichung(e.id)}>
             Eingereicht am {datum(e.submittedDate)} per {WEG_NAME[e.channel]}{e.reference && ` (${e.reference})`}
           </button>
-          {e.decisionDate && ` · Bescheid vom ${datum(e.decisionDate)}`}
+          {bescheidVom && ` · Bescheid vom ${datum(bescheidVom)}`}
+          {bescheidVom && pos?.fileId && (
+            <> <button type="button" className="link" title="Abrechnung öffnen" onClick={() => dateiOeffnen(pos.fileId!)}>📎</button></>
+          )}
+          {pos?.pending && ' · im Bescheid noch offen'}
         </small>
       )}
       {!e && (

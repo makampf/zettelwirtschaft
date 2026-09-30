@@ -71,6 +71,29 @@ describe('Leistungsabrechnung', () => {
     ]);
   });
 
+  it('lässt früher abgerechnete Rechnungen beim Einlesen einer weiteren Abrechnung unverändert', () => {
+    const a = rechnung('2026-06-12', 50000);
+    const b = rechnung('2026-06-13', 40000);
+    const c = rechnung('2026-07-05', 31100);
+    const erste = abrechnungAuslesen('Abrechnung vom 01.08.2026\nBeleg vom 05.07.2026   311,00   280,00');
+    let items = positionenAusAbrechnung([{ invoiceId: a.id }, { invoiceId: b.id }, { invoiceId: c.id }], abrechnungZuordnen(erste, [a, b, c]).zuordnungen, erste.date);
+    expect(items.map((p) => [p.reimbursed, p.pending, p.decisionDate])).toEqual([
+      [undefined, true, undefined],
+      [undefined, true, undefined],
+      [28000, undefined, '2026-08-01'],
+    ]);
+    // Zweite Abrechnung erledigt a; b bleibt offen, c behält die Werte der ersten Abrechnung
+    const zweite = abrechnungAuslesen('Abrechnung vom 20.08.2026\nBeleg vom 12.06.2026   500,00   450,00');
+    items = positionenAusAbrechnung(items, abrechnungZuordnen(zweite, [a, b, c]).zuordnungen, zweite.date);
+    expect(items.map((p) => [p.reimbursed, p.pending, p.decisionDate])).toEqual([
+      [45000, undefined, '2026-08-20'],
+      [undefined, true, undefined],
+      [28000, undefined, '2026-08-01'],
+    ]);
+    // Abgelehnt (0 € bzw. leer mit Bescheiddatum) gilt ebenfalls als abgerechnet
+    expect(positionenAusAbrechnung([{ invoiceId: b.id, decisionDate: '2026-08-01' }], [], zweite.date)).toEqual([{ invoiceId: b.id, decisionDate: '2026-08-01' }]);
+  });
+
   it('liest einen Beihilfebescheid mit Tabellenzeilen', () => {
     const a = abrechnungAuslesen(BEIHILFE);
     expect(a).toMatchObject({ date: '2026-09-30', total: 31500, payer: 'beihilfe' });

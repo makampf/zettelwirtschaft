@@ -355,7 +355,8 @@ export function hinweise(state: AppState, stichtag = heute()): Hinweis[] {
   }
 
   for (const e of state.submissions) {
-    if (e.status !== 'submitted') continue;
+    // Auch teilweise beschiedene Einreichungen mit noch offenen Rechnungen
+    if (e.status !== 'submitted' && !e.items.some((p) => p.pending)) continue;
     const tage = tageZwischen(e.submittedDate, stichtag);
     if (tage >= NACHFRAGEN_NACH_TAGEN) {
       const name = ktKurz(e.payer, personen.get(e.personIds[0]));
