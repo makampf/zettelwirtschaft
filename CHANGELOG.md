@@ -2,6 +2,13 @@
 
 Alle Änderungen an der Zettelwirtschaft. Wird bei jedem Release automatisch aus den Commit-Nachrichten erzeugt.
 
+## [1.4.2](https://github.com/makampf/zettelwirtschaft/compare/v1.4.1...v1.4.2) (2026-09-30)
+
+
+### Bug Fixes
+
+* match statement lines to open invoices first and by nearby date ([484ddfb](https://github.com/makampf/zettelwirtschaft/commit/484ddfb3c0456d1fef779f9a6ab1ed1fac4742a5))
+
 ## [1.4.1](https://github.com/makampf/zettelwirtschaft/compare/v1.4.0...v1.4.1) (2026-09-30)
 
 
