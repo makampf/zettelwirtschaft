@@ -2,6 +2,13 @@
 
 Alle Änderungen an der Zettelwirtschaft. Wird bei jedem Release automatisch aus den Commit-Nachrichten erzeugt.
 
+# [1.4.0](https://github.com/makampf/zettelwirtschaft/compare/v1.3.1...v1.4.0) (2026-09-30)
+
+
+### Features
+
+* warn about duplicates and unsaved changes ([65f937a](https://github.com/makampf/zettelwirtschaft/commit/65f937a7f47bb43529c3b50ed9b7308b4648bd4c))
+
 ## [1.3.1](https://github.com/makampf/zettelwirtschaft/compare/v1.3.0...v1.3.1) (2026-09-30)
 
 
