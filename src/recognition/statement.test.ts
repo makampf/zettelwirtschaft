@@ -125,12 +125,34 @@ Anlage: Pflegedienst | 01.04.2026 - 30.04.2026   200,00   70   140,00`;
     expect(offen).toEqual([]);
   });
 
-  it('ordnet bei abweichendem Datum nur über einen eindeutigen Betrag zu', () => {
-    const a = abrechnungAuslesen('Behandlung 03.07.2026   80,00   24,00\nBehandlung 04.07.2026   50,00   15,00');
+  it('ordnet bei abweichendem Datum über den Betrag zu – nur nahe, eindeutige und offene Rechnungen', () => {
+    const a = abrechnungAuslesen('Behandlung 03.07.2026   80,00   24,00\nBehandlung 04.07.2026   50,00   15,00\nBehandlung 05.07.2026   70,00   21,00\nBehandlung 06.07.2026   30,00   9,00');
     const eindeutig = rechnung('2026-07-10', 8000);
-    const doppelt = [rechnung('2026-07-11', 5000), rechnung('2026-07-12', 5000)];
-    const { zuordnungen, offen } = abrechnungZuordnen(a, [eindeutig, ...doppelt]);
-    expect(zuordnungen.map((z) => [z.invoiceId, z.reimbursed])).toEqual([[eindeutig.id, 2400]]);
-    expect(offen.map((z) => z.date)).toEqual(['2026-07-04']);
+    const naeher = rechnung('2026-07-11', 5000);
+    const weiter = rechnung('2026-07-20', 5000);
+    const zuWeit = rechnung('2026-10-01', 7000); // mehr als 60 Tage entfernt
+    const gleichNah = [rechnung('2026-07-01', 3000), rechnung('2026-07-11', 3000)]; // beide 5 Tage entfernt
+    const { zuordnungen, offen } = abrechnungZuordnen(a, [eindeutig, weiter, naeher, zuWeit, ...gleichNah]);
+    expect(zuordnungen.map((z) => [z.invoiceId, z.reimbursed, z.unsicher])).toEqual([
+      [eindeutig.id, 2400, true],
+      [naeher.id, 1500, true],
+    ]);
+    expect(offen.map((z) => z.date)).toEqual(['2026-07-05', '2026-07-06']);
+  });
+
+  it('gleicher Betrag und gleiches Datum: jede Abrechnung trifft eine andere, noch offene Rechnung', () => {
+    const x = rechnung('2026-06-12', 10000);
+    const y = rechnung('2026-06-12', 10000);
+    const erste = abrechnungAuslesen('Abrechnung vom 01.08.2026\nBeleg vom 12.06.2026   100,00   80,00');
+    let items = positionenAusAbrechnung([{ invoiceId: x.id }, { invoiceId: y.id }], abrechnungZuordnen(erste, [x, y]).zuordnungen, erste.date);
+    expect(items.map((p) => p.reimbursed)).toEqual([8000, undefined]);
+    const zweite = abrechnungAuslesen('Abrechnung vom 20.08.2026\nBeleg vom 12.06.2026   100,00   75,00');
+    items = positionenAusAbrechnung(items, abrechnungZuordnen(zweite, [x, y], items).zuordnungen, zweite.date);
+    expect(items.map((p) => [p.reimbursed, p.decisionDate])).toEqual([[8000, '2026-08-01'], [7500, '2026-08-20']]);
+    // Dieselbe Abrechnung erneut eingelesen: trifft wieder dieselbe Rechnung (gleiche Erstattung), nichts ändert sich
+    const nochmal = abrechnungZuordnen(erste, [x, y], items).zuordnungen;
+    expect(nochmal.map((z) => z.invoiceId)).toEqual([x.id]);
+    // Beide erledigt, andere Erstattung: keine Zuordnung statt Überschreiben
+    expect(abrechnungZuordnen(abrechnungAuslesen('Beleg vom 12.06.2026   100,00   10,00'), [x, y], items).zuordnungen).toEqual([]);
   });
 });

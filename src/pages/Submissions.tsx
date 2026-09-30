@@ -43,10 +43,11 @@ export default function Submissions() {
       let beste: { e: Submission; punkte: number } | undefined;
       for (const e of state.submissions) {
         const rs = e.items.map((p) => rechnungen.get(p.invoiceId)).filter((r): r is Invoice => !!r);
-        const n = abrechnungZuordnen(a, rs).zuordnungen.length;
-        if (!n) continue;
-        // Offene Einreichungen und passende Stelle bevorzugen
-        const punkte = n * 10 + (e.status === 'submitted' ? 5 : 0) + (a.payer && a.payer === e.payer ? 3 : 0);
+        const z = abrechnungZuordnen(a, rs, e.items).zuordnungen;
+        if (!z.length) continue;
+        // Sichere Treffer (Datum + Betrag) zählen mehr; offene Einreichungen und passende Stelle bevorzugen
+        const offene = e.items.some((p) => !abgerechnet(p));
+        const punkte = z.reduce((s, x) => s + (x.unsicher ? 3 : 10), 0) + (offene ? 5 : 0) + (a.payer && a.payer === e.payer ? 3 : 0);
         if (!beste || punkte > beste.punkte) beste = { e, punkte };
       }
       if (!beste) {
@@ -472,6 +473,7 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
   const rechnungen = e.items.map((p) => ({ p, r: state.invoices.find((r) => r.id === p.invoiceId) })).filter((x): x is { p: typeof x.p; r: Invoice } => !!x.r);
   const [leseStatus, setLeseStatus] = useState<{ art: 'laeuft' | 'ok' | 'leer' | 'fehler'; text: string; offen?: AbrechnungsZeile[] } | null>(null);
   const [aus, setAus] = useState<Set<string>>(new Set());
+  const [unsicher, setUnsicher] = useState<Set<string>>(new Set());
   // Aus welcher (neu hinzugefügten) Abrechnung stammt die Erstattung einer Rechnung?
   const [quelle, setQuelle] = useState<Map<string, File>>(new Map());
   // Für die Rückfrage beim Schließen
@@ -480,6 +482,7 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
 
   const setPos = (id: string, teil: Partial<SubmissionItem>) => {
     setAus((a) => { const n = new Set(a); n.delete(id); return n; });
+    setUnsicher((a) => { const n = new Set(a); n.delete(id); return n; });
     setE((x) => ({ ...x, items: x.items.map((p) => (p.invoiceId === id ? { ...p, ...teil } : p)) }));
   };
 
@@ -488,7 +491,8 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
     setLeseStatus({ art: 'laeuft', text: 'Abrechnung wird ausgelesen …' });
     try {
       const a = abrechnungAuslesen(gelesen ?? (await textAusDatei(datei, (t) => setLeseStatus({ art: 'laeuft', text: t }))));
-      const { zuordnungen, offen } = abrechnungZuordnen(a, rechnungen.map((x) => x.r));
+      const { zuordnungen, offen } = abrechnungZuordnen(a, rechnungen.map((x) => x.r), e.items);
+      const unsicher = zuordnungen.filter((z) => z.unsicher).length;
       setE((x) => ({
         ...x,
         // Bescheiddatum der Einreichung = jüngste Abrechnung
@@ -496,6 +500,7 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
         items: positionenAusAbrechnung(x.items, zuordnungen, a.date),
       }));
       setAus(new Set(zuordnungen.map((z) => z.invoiceId)));
+      setUnsicher(new Set(zuordnungen.filter((z) => z.unsicher).map((z) => z.invoiceId)));
       setQuelle((q) => {
         const n = new Map(q);
         for (const z of zuordnungen) if (!z.pending) n.set(z.invoiceId, datei);
@@ -510,6 +515,7 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
       const teile = [
         `${zuordnungen.length} von ${rechnungen.length} Rechnung(en) zugeordnet`,
         pending && `${pending} noch offen`,
+        unsicher && `${unsicher} nur über den Betrag zugeordnet (Datum weicht ab) – bitte prüfen`,
         fehlend > 0 && `${fehlend} nicht in der Abrechnung – als „noch offen“ markiert`,
         frueher > 0 && `${frueher} bereits früher abgerechnet – unverändert`,
         a.total != null && (a.total === erstattet ? `Gesamtsumme ${euro(a.total)} stimmt überein` : `Gesamtsumme laut Abrechnung ${euro(a.total)}, zugeordnet ${euro(erstattet)} – bitte prüfen`),
@@ -624,7 +630,10 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
             <tbody>
               {rechnungen.map(({ p, r }) => (
                 <tr key={r.id} className={aus.has(r.id) ? 'erkannt' : ''}>
-                  <td>{datum(r.date)} · {r.provider}{personen.length > 1 && <> · {personById(r.personId)?.name}</>}</td>
+                  <td>
+                    {datum(r.date)} · {r.provider}{personen.length > 1 && <> · {personById(r.personId)?.name}</>}
+                    {unsicher.has(r.id) && <><br /><small className="rot">⚠️ nur über den Betrag zugeordnet – bitte prüfen</small></>}
+                  </td>
                   <td className="zahl">{euro(r.amount)}</td>
                   <td className="zahl">{euro(erwartetFuerRechnung(state, r, e.payer))}</td>
                   <td>{!p.pending && <BetragFeld wert={p.reimbursed} onChange={(c) => setPos(r.id, { reimbursed: c })} />}</td>
