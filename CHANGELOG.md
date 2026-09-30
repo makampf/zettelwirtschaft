@@ -2,6 +2,13 @@
 
 Alle Änderungen an der Zettelwirtschaft. Wird bei jedem Release automatisch aus den Commit-Nachrichten erzeugt.
 
+## [1.3.1](https://github.com/makampf/zettelwirtschaft/compare/v1.3.0...v1.3.1) (2026-09-30)
+
+
+### Bug Fixes
+
+* read the total and skip service periods in Beihilfe notices ([fb38dfc](https://github.com/makampf/zettelwirtschaft/commit/fb38dfc43f9222c9d0597e1a87f3e55ad537d923))
+
 # [1.3.0](https://github.com/makampf/zettelwirtschaft/compare/v1.2.0...v1.3.0) (2026-09-30)
 
 
