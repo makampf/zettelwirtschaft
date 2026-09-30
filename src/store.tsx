@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { startState } from './defaults';
+import { dateiHash } from './files';
 import { neueId } from './format';
 import { migriere } from './migration';
 import { speicherErmitteln, type Speicher } from './storage';
@@ -152,7 +153,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       dateienHinzufuegen: async (files) => {
         const metas: FileMeta[] = [];
         for (const f of files) {
-          const meta = { id: neueId(), name: f.name, type: f.type || 'application/octet-stream', size: f.size };
+          const meta: FileMeta = { id: neueId(), name: f.name, type: f.type || 'application/octet-stream', size: f.size, hash: await dateiHash(f) };
           await sp.speichereDatei(meta, f);
           metas.push(meta);
         }

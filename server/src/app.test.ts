@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { erstelleApp } from './app.js';
@@ -96,7 +97,12 @@ describe.skipIf(!url)('Server-API', () => {
     expect(d.headers.get('content-type')).toBe('application/pdf');
     expect(new Uint8Array(await d.arrayBuffer())).toEqual(inhalt);
     await app.request('/api/changes', { method: 'POST', headers: H, body: JSON.stringify({ version: 1 }) });
-    expect((await (await app.request('/api/state')).json()).state.files).toEqual([{ id: 'd1', name: 'Rechnung Ärztin.pdf', type: 'application/pdf', size: 6 }]);
+    const hash = createHash('sha256').update(inhalt).digest('hex');
+    expect((await (await app.request('/api/state')).json()).state.files).toEqual([{ id: 'd1', name: 'Rechnung Ärztin.pdf', type: 'application/pdf', size: 6, hash }]);
+    // Ältere Dateien ohne Prüfsumme werden beim Start nachberechnet
+    await pool.query('update files set hash = null');
+    await db.schemaAnlegen();
+    expect((await (await app.request('/api/state')).json()).state.files[0].hash).toBe(hash);
 
     const gross = await app.request('/api/files/d2', { method: 'PUT', headers: { 'x-zettelwirtschaft': '1' }, body: new Uint8Array(2000) });
     expect(gross.status).toBe(413);

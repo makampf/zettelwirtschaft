@@ -93,6 +93,8 @@ export interface FileMeta {
   name: string;
   type: string;
   size: number;
+  /** SHA-256 des Inhalts (hex) – zum Erkennen doppelter Belege. */
+  hash?: string;
 }
 
 export interface Invoice {

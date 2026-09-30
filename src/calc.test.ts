@@ -6,6 +6,7 @@ import {
   erwartet,
   hinweise,
   jahreswerte,
+  moeglicheDuplikate,
   rechnungUebersicht,
   selbstbehalt,
   standardZurueckhalten,
@@ -132,6 +133,18 @@ describe('Erstattung mit Beihilfe', () => {
     state.submissions.push(einreichung({ personId: oma.id, payer: 'pkv', status: 'decided', items: [{ invoiceId: r.id, pending: true }] }));
     expect(traegerInfo(r, oma, 'pkv', state).status).toBe('eingereicht');
     expect(einreichbareRechnungen(state, oma.id, 'pkv')).toHaveLength(0);
+  });
+
+  it('erkennt mögliche Duplikate über Rechnungsnummer oder Datum und Betrag', () => {
+    const { ich, oma } = setup();
+    const a = rechnung({ personId: oma.id, date: '2026-05-01', amount: 12345, invoiceNumber: 'RE-2026/0815' });
+    const andere = rechnung({ personId: ich.id, date: '2026-05-01', amount: 12345 });
+    const liste = [a, andere];
+    const neu = (teil: Partial<Invoice>) => ({ ...rechnung({ personId: oma.id, date: '2026-06-01', amount: 999 }), ...teil });
+    expect(moeglicheDuplikate(neu({ invoiceNumber: 're 2026-0815' }), liste)).toEqual([a]); // andere Schreibweise
+    expect(moeglicheDuplikate(neu({ date: '2026-05-01', amount: 12345 }), liste)).toEqual([a]);
+    expect(moeglicheDuplikate(neu({ invoiceNumber: '1' }), [{ ...a, invoiceNumber: '1' }])).toEqual([]); // zu kurz
+    expect(moeglicheDuplikate(a, liste)).toEqual([]); // sich selbst nicht
   });
 
   it('zurückgehaltene Rechnungen und zuständige Stellen', () => {

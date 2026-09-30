@@ -60,7 +60,8 @@ export default function People() {
 
 function PersonFormular({ person, onClose }: { person?: Person; onClose: () => void }) {
   const { state, speicherePerson, loeschePerson } = useStore();
-  const [p, setP] = useState<Person>(() => person ?? neuePerson('', FARBEN[state.people.length % FARBEN.length], 70));
+  const [start] = useState<Person>(() => person ?? neuePerson('', FARBEN[state.people.length % FARBEN.length], 70));
+  const [p, setP] = useState<Person>(start);
   const bh = (teil: Partial<Person['beihilfe']>) => setP((x) => ({ ...x, beihilfe: { ...x.beihilfe, ...teil } }));
   const pkv = (teil: Partial<Person['pkv']>) => setP((x) => ({ ...x, pkv: { ...x.pkv, ...teil } }));
   const ppv = (teil: Partial<Person['ppv']>) => setP((x) => ({ ...x, ppv: { ...x.ppv, ...teil } }));
@@ -69,7 +70,7 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
   const partner = state.people.find((x) => x.id === p.partnerId && x.id !== p.id);
 
   return (
-    <Modal titel={person ? `${person.name} bearbeiten` : 'Neue Person'} onClose={onClose} breit>
+    <Modal titel={person ? `${person.name} bearbeiten` : 'Neue Person'} onClose={onClose} breit geaendert={JSON.stringify(p) !== JSON.stringify(start)}>
       <form
         onSubmit={(e) => {
           e.preventDefault();

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import pg from 'pg';
 
 /** Tabellen mit je einem JSON-Datensatz pro Zeile (Namen entsprechen den Schlüsseln des App-Zustands). */
@@ -11,6 +12,8 @@ export interface FileMeta {
   name: string;
   type: string;
   size: number;
+  /** SHA-256 des Inhalts (hex) – zum Erkennen doppelter Belege. */
+  hash?: string;
 }
 
 export interface State {
@@ -59,6 +62,8 @@ create table if not exists files (
   content bytea not null,
   created_at timestamptz not null default now()
 );
+alter table files add column if not exists hash text;
+update files set hash = encode(sha256(content), 'hex') where hash is null;
 `;
 
 export class Datenbank {
@@ -90,13 +95,13 @@ export class Datenbank {
     // Sortiert nach laufender Nummer: Datensätze behalten ihre Reihenfolge (Upserts ändern sie nicht)
     const lese = async (s: Collection) =>
       (await this.pool.query<{ data: DataRecord }>(`select data from ${s} order by seq`)).rows.map((r) => r.data);
-    const files = await this.pool.query<FileMeta>('select id, name, type, size from files order by created_at, id');
+    const files = await this.pool.query<FileMeta>('select id, name, type, size, hash from files order by created_at, id');
     return {
       version: version.rows[0].value,
       people: await lese('people'),
       invoices: await lese('invoices'),
       submissions: await lese('submissions'),
-      files: files.rows,
+      files: files.rows.map(({ hash, ...m }) => (hash ? { ...m, hash } : m)),
     };
   }
 
@@ -130,9 +135,9 @@ export class Datenbank {
 
   async dateiSpeichern(meta: FileMeta, content: Buffer): Promise<void> {
     await this.pool.query(
-      `insert into files (id, name, type, size, content) values ($1, $2, $3, $4, $5)
-       on conflict (id) do update set name = excluded.name, type = excluded.type, size = excluded.size, content = excluded.content`,
-      [meta.id, meta.name, meta.type, content.length, content],
+      `insert into files (id, name, type, size, content, hash) values ($1, $2, $3, $4, $5, $6)
+       on conflict (id) do update set name = excluded.name, type = excluded.type, size = excluded.size, content = excluded.content, hash = excluded.hash`,
+      [meta.id, meta.name, meta.type, content.length, content, createHash('sha256').update(content).digest('hex')],
     );
   }
 

@@ -180,6 +180,21 @@ export function einreichbareRechnungen(state: AppState, personId: string, kt: Pa
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
+/**
+ * Mögliche Duplikate einer (ggf. noch ungespeicherten) Rechnung derselben Person:
+ * gleiche Rechnungsnummer oder gleiches Datum mit gleichem Betrag.
+ */
+export function moeglicheDuplikate(r: Pick<Invoice, 'id' | 'personId' | 'date' | 'amount' | 'invoiceNumber'>, rechnungen: Invoice[]): Invoice[] {
+  const nr = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const eigene = nr(r.invoiceNumber);
+  return rechnungen.filter(
+    (x) =>
+      x.id !== r.id &&
+      x.personId === r.personId &&
+      ((eigene.length >= 4 && nr(x.invoiceNumber) === eigene) || (!!r.date && x.date === r.date && r.amount > 0 && x.amount === r.amount)),
+  );
+}
+
 /** Rechnungen, die bei einem Kostenträger bewusst zurückgehalten werden (z. B. für die BRE) und noch nicht eingereicht sind. */
 export function zurueckgehalteneRechnungen(state: AppState, personId: string, kt: Payer, ausserEinreichung?: string): Invoice[] {
   const person = state.people.find((p) => p.id === personId);

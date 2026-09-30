@@ -19,6 +19,8 @@ oder, in der GitHub-Pages- bzw. Datei-Version, **nur lokal im Browser** (Indexed
 - **Gemeinsam versicherte Personen** (z. B. Großeltern): Einreichungen und Belegliste enthalten die Rechnungen beider
   (die Verknüpfung wird bei beiden eingetragen; Versicherungsdaten lassen sich vom Partner übernehmen)
 - **Rechnungen** erfassen (Krankheit oder Pflege) inkl. Belegen als PDF/Foto, Zahlungsziel und Bezahlt-Datum
+  - **Duplikate:** Warnung bei gleicher Rechnungsnummer bzw. gleichem Datum und Betrag; derselbe Beleg (erkannt am Inhalt)
+    wird nicht doppelt angehängt, und ein Hinweis zeigt, wo er schon hinterlegt ist
   - **Massenbearbeitung:** mehrere Rechnungen auswählen und gemeinsam als bezahlt markieren, zurückhalten/freigeben,
     Art, Vorsorge oder Person ändern oder löschen
   - **Aus Beleg erfassen:** PDF oder Foto hochladen (am Handy direkt mit der Kamera) – Betrag, Rechnungsdatum, Zahlungsziel,
@@ -43,7 +45,7 @@ oder, in der GitHub-Pages- bzw. Datei-Version, **nur lokal im Browser** (Indexed
 - **Bescheide** erfassen: tatsächlich erstattete Beträge und Kürzungsgründe je Rechnung; abgelehnte Rechnungen können erneut eingereicht werden
   - **Abrechnung einlesen:** PDF oder Foto einer Leistungsabrechnung bzw. eines Beihilfebescheids hochladen – die Positionen
     werden über Rechnungsdatum und Betrag den Rechnungen der passenden Einreichung zugeordnet, Erstattungen, Datum und
-    „noch offen“ vorausgefüllt und mit der Gesamtsumme abgeglichen.
+    „noch offen“ vorausgefüllt und mit der Gesamtsumme abgeglichen. Rechnungen, die in der Abrechnung fehlen, gelten als noch offen.
 - **Übersicht** je Person: was ist noch zu bezahlen, was noch einzureichen, welche Erstattungen stehen aus, Eigenanteil im Jahr
 - **Hinweise** auf überfällige Zahlungen, ablaufende Beihilfe-Antragsfristen und Einreichungen, die seit über 6 Wochen ohne Bescheid sind
 - **Auswertung** je Jahr und Person mit CSV-Export (hilfreich für außergewöhnliche Belastungen in der Steuererklärung)

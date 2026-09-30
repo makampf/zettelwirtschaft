@@ -252,7 +252,12 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kandidaten, vorbelegt]);
 
+  // Für die Rückfrage beim Schließen
+  const [angefasst, setAngefasst] = useState(false);
+  const geaendert = angefasst || neueDateien.length > 0 || dateiIds.join() !== (einreichung?.fileIds ?? []).join();
+
   function umschalten(id: string) {
+    setAngefasst(true);
     setE((x) => ({
       ...x,
       items: gewaehlt.has(id) ? x.items.filter((p) => p.invoiceId !== id) : [...x.items, { invoiceId: id }],
@@ -280,8 +285,9 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
   const erw = kandidaten.filter((r) => gewaehlt.has(r.id)).reduce((s, r) => s + erwartetFuerRechnung(state, r, e.payer), 0);
 
   return (
-    <Modal titel={einreichung ? 'Einreichung bearbeiten' : 'Neue Einreichung'} onClose={onClose} breit>
+    <Modal titel={einreichung ? 'Einreichung bearbeiten' : 'Neue Einreichung'} onClose={onClose} breit geaendert={geaendert}>
       <form
+        onChangeCapture={() => setAngefasst(true)}
         onSubmit={async (ev) => {
           ev.preventDefault();
           if (!e.items.length) return alert('Bitte mindestens eine Rechnung auswählen.');
@@ -462,6 +468,9 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
   const rechnungen = e.items.map((p) => ({ p, r: state.invoices.find((r) => r.id === p.invoiceId) })).filter((x): x is { p: typeof x.p; r: Invoice } => !!x.r);
   const [leseStatus, setLeseStatus] = useState<{ art: 'laeuft' | 'ok' | 'leer' | 'fehler'; text: string; offen?: AbrechnungsZeile[] } | null>(null);
   const [aus, setAus] = useState<Set<string>>(new Set());
+  // Für die Rückfrage beim Schließen
+  const [angefasst, setAngefasst] = useState(false);
+  const geaendert = angefasst || neueDateien.length > 0 || dateiIds.join() !== einreichung.fileIds.join();
 
   const setPos = (id: string, teil: Partial<SubmissionItem>) => {
     setAus((a) => { const n = new Set(a); n.delete(id); return n; });
@@ -478,10 +487,12 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
       setAus(new Set(zuordnungen.map((z) => z.invoiceId)));
       if (!neueDateien.includes(datei)) setNeueDateien((n) => [...n, datei]);
       const pending = zuordnungen.filter((z) => z.pending).length;
+      const fehlend = rechnungen.length - zuordnungen.length;
       const erstattet = zuordnungen.reduce((s, z) => s + (z.reimbursed ?? 0), 0);
       const teile = [
         `${zuordnungen.length} von ${rechnungen.length} Rechnung(en) zugeordnet`,
         pending && `${pending} noch offen`,
+        fehlend > 0 && `${fehlend} nicht in der Abrechnung – als „noch offen“ markiert`,
         a.total != null && (a.total === erstattet ? `Gesamtsumme ${euro(a.total)} stimmt überein` : `Gesamtsumme laut Abrechnung ${euro(a.total)}, zugeordnet ${euro(erstattet)} – bitte prüfen`),
       ].filter(Boolean);
       setLeseStatus(
@@ -505,8 +516,9 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
   const erw = rechnungen.filter(({ p }) => !p.pending).reduce((s, { r }) => s + erwartetFuerRechnung(state, r, e.payer), 0);
 
   return (
-    <Modal titel={`Bescheid – ${ktName(e.payer, personen[0])} – ${namen(personen)}`} onClose={onClose} breit>
+    <Modal titel={`Bescheid – ${ktName(e.payer, personen[0])} – ${namen(personen)}`} onClose={onClose} breit geaendert={geaendert}>
       <form
+        onChangeCapture={() => setAngefasst(true)}
         onSubmit={async (ev) => {
           ev.preventDefault();
           const ids = await dateienSpeichern(einreichung.fileIds, dateiIds, neueDateien);
@@ -540,12 +552,19 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
           <button
             type="button"
             className="klein"
-            onClick={() => setE((x) => ({ ...x, items: x.items.map((p) => {
-              const r = rechnungen.find((y) => y.r.id === p.invoiceId)?.r;
-              return r ? { ...p, reimbursed: erwartetFuerRechnung(state, r, x.payer) } : p;
-            }) }))}
+            title="Leere Beträge mit der erwarteten Erstattung füllen – eingetragene Beträge und „noch offen“ bleiben unverändert"
+            onClick={() => {
+              setAngefasst(true);
+              setE((x) => ({
+                ...x,
+                items: x.items.map((p) => {
+                  const r = rechnungen.find((y) => y.r.id === p.invoiceId)?.r;
+                  return r && p.reimbursed == null && !p.pending ? { ...p, reimbursed: erwartetFuerRechnung(state, r, x.payer) } : p;
+                }),
+              }));
+            }}
           >
-            Alle wie erwartet übernehmen
+            Leere wie erwartet ausfüllen
           </button>
         </div>
 

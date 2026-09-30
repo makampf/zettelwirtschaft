@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { beihilfeFristEnde, breRelevant, erwartet, quote, rechnungUebersicht, selbstbehalt, standardZurueckhalten, traegerFuer, traegerInfo, versicherungFuer } from '../calc';
+import { beihilfeFristEnde, breRelevant, erwartet, moeglicheDuplikate, quote, rechnungUebersicht, selbstbehalt, standardZurueckhalten, traegerFuer, traegerInfo, versicherungFuer } from '../calc';
 import { ProviderField } from '../components/ProviderField';
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, StatusBadge, useDateienSpeichern } from '../components/ui';
 import { erbringerListe, type ErbringerInfo } from '../providers';
@@ -313,6 +313,9 @@ export function RechnungFormular({
   const [leseStatus, setLeseStatus] = useState<{ art: 'laeuft' | 'ok' | 'leer' | 'fehler'; text: string } | null>(null);
   const beruehrt = useRef(new Set<keyof Invoice>());
   const [leseText, setLeseText] = useState<string | null>(null);
+  // Für die Rückfrage beim Schließen: wurde etwas eingegeben, ausgelesen oder ein Beleg hinzugefügt?
+  const [angefasst, setAngefasst] = useState(false);
+  const geaendert = angefasst || erkannt.size > 0 || neueDateien.length > 0 || dateiIds.join() !== (rechnung?.fileIds ?? []).join();
   // Bei neuen Rechnungen wird „Zurückhalten (BRE)“ vorbelegt, bis die Checkbox von Hand geändert wird.
   const [pkvManuell, setPkvManuell] = useState(!!rechnung);
 
@@ -403,6 +406,8 @@ export function RechnungFormular({
     setLeseStatus({ art: 'leer', text: 'Kein lesbarer Beleg (PDF oder Bild) vorhanden.' });
   }
   const vorschau = { ...r, amount: betrag ?? 0 };
+  const duplikate = moeglicheDuplikate(vorschau, state.invoices);
+  const dupText = (x: Invoice) => `${x.provider || 'Rechnung'} vom ${datum(x.date)}, ${euro(x.amount)}${x.invoiceNumber ? `, Nr. ${x.invoiceNumber}` : ''}`;
 
   // Leistungserbringer-Vorschläge aus bisherigen Rechnungen (ohne die gerade bearbeitete)
   const erbringerInfos = useMemo(() => erbringerListe(state.invoices.filter((x) => x.id !== r.id)), [state.invoices, r.id]);
@@ -454,6 +459,7 @@ export function RechnungFormular({
 
   async function speichern(undNeu: boolean) {
     if (betrag == null || !person) return;
+    if (!rechnung && duplikate.length && !confirm(`Diese Rechnung ist möglicherweise schon erfasst (${duplikate.map(dupText).join('; ')}). Trotzdem speichern?`)) return;
     setSpeichert(true);
     try {
       const ids = await dateienSpeichern(rechnung?.fileIds ?? [], dateiIds, neueDateien);
@@ -466,8 +472,9 @@ export function RechnungFormular({
   }
 
   return (
-    <Modal titel={rechnung ? 'Rechnung bearbeiten' : 'Neue Rechnung'} onClose={onClose} breit>
+    <Modal titel={rechnung ? 'Rechnung bearbeiten' : 'Neue Rechnung'} onClose={onClose} breit geaendert={geaendert}>
       <form
+        onChangeCapture={() => setAngefasst(true)}
         onSubmit={(e) => {
           e.preventDefault();
           void speichern(false);
@@ -528,6 +535,17 @@ export function RechnungFormular({
           <Feld label="Rechnungsnummer" erkannt={erkannt.has('invoiceNumber')}>
             <input value={r.invoiceNumber} onChange={(e) => set('invoiceNumber', e.target.value)} />
           </Feld>
+          {duplikate.length > 0 && (
+            <div className="hinweis warnung breit" role="status">
+              ⚠️ Möglicherweise schon erfasst:{' '}
+              {duplikate.map((x, i) => (
+                <span key={x.id}>
+                  {i > 0 && '; '}
+                  {dupText(x)}
+                </span>
+              ))}
+            </div>
+          )}
           <Feld label="Beschreibung" breit>
             <input value={r.description} placeholder="z. B. Behandlung 03/2026, Heimkosten September" onChange={(e) => set('description', e.target.value)} />
           </Feld>

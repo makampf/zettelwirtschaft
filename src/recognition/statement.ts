@@ -110,11 +110,14 @@ export function abrechnungZuordnen(a: Abrechnung, rechnungen: Invoice[]): { zuor
   return { zuordnungen, offen };
 }
 
-/** Überträgt eine Zuordnung auf die Positionen einer Einreichung. */
+/**
+ * Überträgt eine Zuordnung auf die Positionen einer Einreichung. Rechnungen, die in der Abrechnung nicht vorkommen,
+ * sind darin noch nicht abgerechnet und werden als „noch offen“ markiert.
+ */
 export function positionenAusAbrechnung(items: SubmissionItem[], zuordnungen: Zuordnung[]): SubmissionItem[] {
   return items.map((p) => {
     const z = zuordnungen.find((x) => x.invoiceId === p.invoiceId);
-    if (!z) return p;
+    if (!z) return { ...p, pending: true, reimbursed: undefined };
     return z.pending ? { ...p, pending: true, reimbursed: undefined } : { ...p, pending: undefined, reimbursed: z.reimbursed ?? p.reimbursed };
   });
 }

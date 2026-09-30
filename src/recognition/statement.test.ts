@@ -63,7 +63,12 @@ describe('Leistungsabrechnung', () => {
       [klinik.id, undefined, true],
     ]);
     const items = positionenAusAbrechnung([{ invoiceId: arzt.id }, { invoiceId: klinik.id, reimbursed: 5 }, { invoiceId: fremd.id }], zuordnungen);
-    expect(items).toEqual([{ invoiceId: arzt.id, reimbursed: 12000 }, { invoiceId: klinik.id, pending: true, reimbursed: undefined }, { invoiceId: fremd.id }]);
+    // „fremd“ kommt in der Abrechnung nicht vor → noch nicht abgerechnet
+    expect(items).toEqual([
+      { invoiceId: arzt.id, reimbursed: 12000 },
+      { invoiceId: klinik.id, pending: true, reimbursed: undefined },
+      { invoiceId: fremd.id, pending: true, reimbursed: undefined },
+    ]);
   });
 
   it('liest einen Beihilfebescheid mit Tabellenzeilen', () => {
