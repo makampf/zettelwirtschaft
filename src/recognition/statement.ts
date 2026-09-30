@@ -24,7 +24,14 @@ export interface Abrechnung {
 
 const OFFEN = /noch\s+o[fT]{0,2}en|nicht\s+berücksichtigt|in\s+bearbeitung|zurückgestellt/i;
 const KEINE_POSITION = /gesamt|summe|überwiesen|iban|konto|seite\s+\d|abrechnung\s+vom|bescheid\s+vom|geb(\.|oren|urtsdatum)/i;
-const GESAMT = /gesamtsumme|gesamtbetrag|auszahlungsbetrag|erstattungsbetrag|beihilfebetrag|betrag\s+über|summe\s+der\s+erstattung/i;
+/** Hinweise auf den Gesamtbetrag, nach Verlässlichkeit geordnet. */
+const GESAMT: RegExp[] = [
+  /überwiesene\s+beihilfe|gesamtsumme|gesamtbetrag|auszahlungsbetrag|erstattungsbetrag|beihilfebetrag|betrag\s+über|summe\s+der\s+erstattung/i,
+  /in\s+höhe\s+von|festgesetzt/i,
+  /^summen?\b/i,
+];
+/** Leistungszeitraum („01.04.2026 - 30.04.2026“) – Detailzeile, keine Rechnung. */
+const ZEITRAUM = /\d{1,2}\.\d{1,2}\.\d{2,4}\s*[-–]\s*\d{1,2}\.\d{1,2}\.\d{2,4}/;
 
 /** Liest Datum, Gesamtsumme und die abgerechneten Positionen aus dem Text einer Abrechnung. */
 export function abrechnungAuslesen(roh: string): Abrechnung {
@@ -39,15 +46,19 @@ export function abrechnungAuslesen(roh: string): Abrechnung {
       break;
     }
   }
-  for (const z of zeilen) {
-    if (!GESAMT.test(z)) continue;
-    const b = betraegeIn(z);
-    if (b.length) a.total = b[b.length - 1];
+  gesamt: for (const re of GESAMT) {
+    for (const z of zeilen) {
+      const b = re.test(z) ? betraegeIn(z) : [];
+      if (b.length) {
+        a.total = b[b.length - 1];
+        break gesamt;
+      }
+    }
   }
   if (/beihilfe/i.test(zeilen.slice(0, 30).join(' ')) && /bescheid|festsetzung/i.test(roh)) a.payer = 'beihilfe';
 
   for (const z of zeilen) {
-    if (KEINE_POSITION.test(z)) continue;
+    if (KEINE_POSITION.test(z) || ZEITRAUM.test(z)) continue;
     const daten = datenIn(z);
     const amounts = betraegeIn(z);
     if (!daten.length || !amounts.length) continue;

@@ -75,6 +75,28 @@ describe('Leistungsabrechnung', () => {
     expect(zuordnungen.map((z) => z.reimbursed)).toEqual([28000, 3500]);
   });
 
+  it('Beihilfebescheid mit Versicherungsspalte, Gesamtbetrag im Text und Detailanlage', () => {
+    const text = `Beihilfestelle Musterstadt
+Festsetzung der Beihilfe
+Zu den geltend gemachten Aufwendungen wird eine Beihilfe in Höhe von 245,00
+Euro festgesetzt.
+Antrag vom 01.06.2026; Bescheid vom 20.06.2026
+Rechnungs-  Rechnungs-  Versicherungs-  beihilfefähige  Satz  Beihilfe  Hinweis
+datum       betrag      erstattung      Aufwendungen
+10.05.2026   200,00   60,00   200,00   70   140,00 | 1234
+10.05.2026   150,00   45,00   150,00   70   105,00
+Summen   350,00   105,00   245,00
+Anlage: Pflegedienst | 01.04.2026 - 30.04.2026   200,00   70   140,00`;
+    const a = abrechnungAuslesen(text);
+    expect(a).toMatchObject({ date: '2026-06-20', total: 24500, payer: 'beihilfe' });
+    expect(a.zeilen).toHaveLength(2); // Zeile mit Leistungszeitraum ist keine Position
+    const r1 = rechnung('2026-05-10', 20000);
+    const r2 = rechnung('2026-05-10', 15000);
+    const { zuordnungen, offen } = abrechnungZuordnen(a, [r1, r2]);
+    expect(zuordnungen.map((z) => [z.invoiceId, z.reimbursed])).toEqual([[r1.id, 14000], [r2.id, 10500]]);
+    expect(offen).toEqual([]);
+  });
+
   it('ordnet bei abweichendem Datum nur über einen eindeutigen Betrag zu', () => {
     const a = abrechnungAuslesen('Behandlung 03.07.2026   80,00   24,00\nBehandlung 04.07.2026   50,00   15,00');
     const eindeutig = rechnung('2026-07-10', 8000);
