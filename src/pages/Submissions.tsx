@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { breCheck, breRelevant, einreichbareRechnungen, erwartetFuerRechnung, traegerFuer, versicherungFuer } from '../calc';
+import { breCheck, breRelevant, einreichbareRechnungen, erwartetFuerRechnung, traegerFuer, versicherungFuer, zurueckgehalteneRechnungen, zustaendigeStellen } from '../calc';
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, useDateienSpeichern } from '../components/ui';
 import { datum, euro, heute, neueId } from '../format';
 import { useNav } from '../nav';
+import { abrechnungAuslesen, abrechnungZuordnen, positionenAusAbrechnung, type AbrechnungsZeile } from '../recognition/statement';
+import { textAusDatei } from '../recognition/text';
 import { useStore } from '../store';
 import {
   ART_NAME,
@@ -13,12 +15,16 @@ import {
   WEG_NAME,
   type Submission,
   type SubmissionChannel,
+  type SubmissionItem,
   type Payer,
   type Person,
   type Invoice,
 } from '../types';
 
-type Ansicht = { typ: 'bearbeiten'; e?: Submission; personId?: string; kt?: Payer } | { typ: 'bescheid'; e: Submission } | { typ: 'druck'; e: Submission };
+type Ansicht =
+  | { typ: 'bearbeiten'; e?: Submission; personId?: string; kt?: Payer }
+  | { typ: 'bescheid'; e: Submission; beleg?: File; text?: string }
+  | { typ: 'druck'; e: Submission };
 
 export default function Submissions() {
   const { state, personById } = useStore();
@@ -26,6 +32,33 @@ export default function Submissions() {
   const [statusFilter, setStatusFilter] = useState<'' | 'submitted' | 'decided'>('');
   const [ktFilter, setKtFilter] = useState<Payer | ''>('');
   const [ansicht, setAnsicht] = useState<Ansicht | null>(null);
+  const [einlesen, setEinlesen] = useState<{ art: 'laeuft' | 'leer' | 'fehler'; text: string } | null>(null);
+
+  /** Leistungsabrechnung/Bescheid einlesen und die passende Einreichung (meiste Treffer) zum Erfassen öffnen. */
+  async function abrechnungEinlesen(datei: File) {
+    setEinlesen({ art: 'laeuft', text: 'Abrechnung wird ausgelesen …' });
+    try {
+      const text = await textAusDatei(datei, (t) => setEinlesen({ art: 'laeuft', text: t }));
+      const a = abrechnungAuslesen(text);
+      let beste: { e: Submission; punkte: number } | undefined;
+      for (const e of state.submissions) {
+        const rs = e.items.map((p) => rechnungen.get(p.invoiceId)).filter((r): r is Invoice => !!r);
+        const n = abrechnungZuordnen(a, rs).zuordnungen.length;
+        if (!n) continue;
+        // Offene Einreichungen und passende Stelle bevorzugen
+        const punkte = n * 10 + (e.status === 'submitted' ? 5 : 0) + (a.payer && a.payer === e.payer ? 3 : 0);
+        if (!beste || punkte > beste.punkte) beste = { e, punkte };
+      }
+      if (!beste) {
+        setEinlesen({ art: 'leer', text: 'Keine Einreichung enthält Rechnungen aus dieser Abrechnung (Rechnungsdatum und Betrag müssen passen).' });
+        return;
+      }
+      setEinlesen(null);
+      setAnsicht({ typ: 'bescheid', e: beste.e, beleg: datei, text });
+    } catch (err) {
+      setEinlesen({ art: 'fehler', text: `Abrechnung konnte nicht ausgelesen werden: ${err instanceof Error ? err.message : err}` });
+    }
+  }
 
   useEffect(() => {
     const z = nav.ziel;
@@ -62,8 +95,28 @@ export default function Submissions() {
     <section>
       <div className="seitenkopf">
         <h1>Einreichungen</h1>
-        <button className="primaer" onClick={() => setAnsicht({ typ: 'bearbeiten', personId: nav.personFilter || undefined })}>+ Neue Einreichung</button>
+        <div className="zeile">
+          <label className="button" title="PDF oder Foto einer Leistungsabrechnung bzw. eines Bescheids – Erstattungen werden der passenden Einreichung zugeordnet">
+            📄 Abrechnung einlesen
+            <input
+              type="file"
+              accept="application/pdf,image/*"
+              hidden
+              onChange={(ev) => {
+                const f = ev.target.files?.[0];
+                ev.target.value = '';
+                if (f) void abrechnungEinlesen(f);
+              }}
+            />
+          </label>
+          <button className="primaer" onClick={() => setAnsicht({ typ: 'bearbeiten', personId: nav.personFilter || undefined })}>+ Neue Einreichung</button>
+        </div>
       </div>
+      {einlesen && (
+        <div className={`lesestatus ${einlesen.art}`} role="status">
+          {einlesen.art === 'laeuft' ? '⏳ ' : einlesen.art === 'fehler' ? '⚠️ ' : 'ℹ️ '}{einlesen.text}
+        </div>
+      )}
       <div className="filterleiste">
         <div className="segmente">
           <button className={statusFilter === '' ? 'aktiv' : ''} onClick={() => setStatusFilter('')}>Alle</button>
@@ -135,21 +188,25 @@ export default function Submissions() {
       {ansicht?.typ === 'bearbeiten' && (
         <EinreichungFormular einreichung={ansicht.e} personId={ansicht.personId} kt={ansicht.kt} onClose={() => setAnsicht(null)} />
       )}
-      {ansicht?.typ === 'bescheid' && <BescheidFormular einreichung={ansicht.e} onClose={() => setAnsicht(null)} />}
+      {ansicht?.typ === 'bescheid' && <BescheidFormular einreichung={ansicht.e} beleg={ansicht.beleg} text={ansicht.text} onClose={() => setAnsicht(null)} />}
       {ansicht?.typ === 'druck' && <Belegliste einreichung={ansicht.e} onClose={() => setAnsicht(null)} />}
     </section>
   );
 }
 
 function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichung?: Submission; personId?: string; kt?: Payer; onClose: () => void }) {
-  const { state, personById, speichereEinreichung, loescheEinreichung } = useStore();
+  const { state, personById, speichereEinreichung, speichereRechnung, loescheEinreichung } = useStore();
   const dateienSpeichern = useDateienSpeichern();
-  const [e, setE] = useState<Submission>(
-    () =>
-      einreichung ?? {
+  const [e, setE] = useState<Submission>(() => {
+    if (einreichung) return einreichung;
+    const personIds = startPersonen(state.people, personId);
+    const stellen = zustaendigeStellen(personIds.map(personById).filter((p): p is Person => !!p));
+    // Vorauswahl: gewünschte Stelle, sonst die erste zuständige mit offenen Rechnungen
+    const mitOffenen = stellen.find((k) => personIds.some((id) => einreichbareRechnungen(state, id, k).length > 0));
+    return {
         id: neueId(),
-        personIds: startPersonen(state.people, personId),
-        payer: kt ?? 'beihilfe',
+        personIds,
+        payer: kt && stellen.includes(kt) ? kt : (mitOffenen ?? stellen[0] ?? 'pkv'),
         submittedDate: heute(),
         channel: 'app',
         reference: '',
@@ -157,17 +214,32 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
         items: [],
         fileIds: [],
         note: '',
-      },
-  );
+    };
+  });
   const [dateiIds, setDateiIds] = useState(e.fileIds);
   const [neueDateien, setNeueDateien] = useState<File[]>([]);
   const set = <K extends keyof Submission>(k: K, v: Submission[K]) => setE((x) => ({ ...x, [k]: v }));
   const person = personById(e.personIds[0]);
 
-  const kandidaten = useMemo(
-    () => e.personIds.flatMap((id) => einreichbareRechnungen(state, id, e.payer, e.id)).sort((a, b) => a.date.localeCompare(b.date)),
+  const personen = e.personIds.map(personById).filter((p): p is Person => !!p);
+  const stellen = zustaendigeStellen(personen);
+  // Offene und – zum Freigeben – zurückgehaltene Rechnungen (z. B. wenn sich die BRE nicht mehr lohnt)
+  const zurueckgehalten = useMemo(
+    () => new Set(e.personIds.flatMap((id) => zurueckgehalteneRechnungen(state, id, e.payer, e.id)).map((r) => r.id)),
     [state, e.personIds, e.payer, e.id],
   );
+  const kandidaten = useMemo(
+    () =>
+      e.personIds
+        .flatMap((id) => [...einreichbareRechnungen(state, id, e.payer, e.id), ...zurueckgehalteneRechnungen(state, id, e.payer, e.id)])
+        .sort((a, b) => a.date.localeCompare(b.date)),
+    [state, e.personIds, e.payer, e.id],
+  );
+  const offene = kandidaten.filter((r) => !zurueckgehalten.has(r.id));
+  // Personen geändert: nicht zuständige Stelle (z. B. Beihilfe ohne Berechtigung) ersetzen
+  useEffect(() => {
+    if (!einreichung && stellen.length && !stellen.includes(e.payer)) setE((x) => ({ ...x, payer: stellen[0] }));
+  }, [einreichung, stellen, e.payer]);
   const mehrerePersonen = e.personIds.length > 1;
   const gewaehlt = new Set(e.items.map((p) => p.invoiceId));
 
@@ -175,8 +247,9 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
   const [vorbelegt, setVorbelegt] = useState(!!einreichung);
   useEffect(() => {
     if (vorbelegt) return;
-    setE((x) => ({ ...x, items: kandidaten.map((r) => ({ invoiceId: r.id })) }));
+    setE((x) => ({ ...x, items: offene.map((r) => ({ invoiceId: r.id })) }));
     setVorbelegt(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kandidaten, vorbelegt]);
 
   function umschalten(id: string) {
@@ -213,6 +286,10 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
           ev.preventDefault();
           if (!e.items.length) return alert('Bitte mindestens eine Rechnung auswählen.');
           const ids = await dateienSpeichern(einreichung?.fileIds ?? [], dateiIds, neueDateien);
+          // Ausgewählte zurückgehaltene Rechnungen werden damit freigegeben
+          for (const r of kandidaten) {
+            if (gewaehlt.has(r.id) && zurueckgehalten.has(r.id)) speichereRechnung({ ...r, heldBack: r.heldBack.filter((k) => k !== e.payer) });
+          }
           speichereEinreichung({ ...e, fileIds: ids });
           onClose();
         }}
@@ -243,7 +320,7 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
           </Feld>
           <Feld label="Eingereicht bei">
             <select value={e.payer} disabled={!!einreichung} onChange={(ev) => { set('payer', ev.target.value as Payer); setVorbelegt(false); }}>
-              {KOSTENTRAEGER.filter((k) => k === e.payer || k !== 'ppv' || !person?.pkv.includesCare).map((k) => (
+              {KOSTENTRAEGER.filter((k) => k === e.payer || stellen.includes(k)).map((k) => (
                 <option key={k} value={k}>{ktName(k, person)}{person && traegerName(person, k)}</option>
               ))}
             </select>
@@ -274,8 +351,8 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
                       <input
                         type="checkbox"
                         aria-label="Alle auswählen"
-                        checked={kandidaten.every((r) => gewaehlt.has(r.id))}
-                        onChange={(ev) => setE((x) => ({ ...x, items: ev.target.checked ? kandidaten.map((r) => x.items.find((p) => p.invoiceId === r.id) ?? { invoiceId: r.id }) : [] }))}
+                        checked={offene.length > 0 && offene.every((r) => gewaehlt.has(r.id))}
+                        onChange={(ev) => setE((x) => ({ ...x, items: ev.target.checked ? offene.map((r) => x.items.find((p) => p.invoiceId === r.id) ?? { invoiceId: r.id }) : [] }))}
                       />
                     </th>
                     <th>Datum</th>
@@ -292,7 +369,10 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
                       <td><input type="checkbox" checked={gewaehlt.has(r.id)} onChange={() => umschalten(r.id)} onClick={(ev) => ev.stopPropagation()} /></td>
                       <td>{datum(r.date)}</td>
                       {mehrerePersonen && <td><PersonChip person={personById(r.personId)} /></td>}
-                      <td>{r.provider}{r.description && <small className="grau"> · {r.description}</small>}</td>
+                      <td>
+                        {r.provider}{r.description && <small className="grau"> · {r.description}</small>}
+                        {zurueckgehalten.has(r.id) && <> <span className="badge status-nicht_einreichen">zurückgehalten</span></>}
+                      </td>
                       <td>{ART_NAME[r.kind]}</td>
                       <td className="zahl">{euro(r.amount)}</td>
                       <td className="zahl">{euro(erwartetFuerRechnung(state, r, e.payer))}</td>
@@ -308,6 +388,9 @@ function EinreichungFormular({ einreichung, personId, kt, onClose }: { einreichu
                 </tfoot>
               </table>
             </div>
+          )}
+          {zurueckgehalten.size > 0 && (
+            <small className="grau">Zurückgehaltene Rechnungen (z. B. für die Beitragsrückerstattung) werden durch Auswählen freigegeben und mit eingereicht.</small>
           )}
           {e.status === 'decided' && <small className="grau">Hinweis: Für diese Einreichung ist bereits ein Bescheid erfasst.</small>}
           {breVerlust.map((c) => c && (
@@ -369,20 +452,57 @@ function traegerName(p: Person, kt: Payer): string {
   return n ? ` (${n})` : '';
 }
 
-function BescheidFormular({ einreichung, onClose }: { einreichung: Submission; onClose: () => void }) {
+function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: Submission; beleg?: File; text?: string; onClose: () => void }) {
   const { state, personById, speichereEinreichung } = useStore();
   const dateienSpeichern = useDateienSpeichern();
   const personen = einreichung.personIds.map(personById);
   const [e, setE] = useState(einreichung);
   const [dateiIds, setDateiIds] = useState(e.fileIds);
-  const [neueDateien, setNeueDateien] = useState<File[]>([]);
+  const [neueDateien, setNeueDateien] = useState<File[]>(beleg ? [beleg] : []);
   const rechnungen = e.items.map((p) => ({ p, r: state.invoices.find((r) => r.id === p.invoiceId) })).filter((x): x is { p: typeof x.p; r: Invoice } => !!x.r);
+  const [leseStatus, setLeseStatus] = useState<{ art: 'laeuft' | 'ok' | 'leer' | 'fehler'; text: string; offen?: AbrechnungsZeile[] } | null>(null);
+  const [aus, setAus] = useState<Set<string>>(new Set());
 
-  const setPos = (id: string, teil: { erstattet?: number; bemerkung?: string }) =>
+  const setPos = (id: string, teil: Partial<SubmissionItem>) => {
+    setAus((a) => { const n = new Set(a); n.delete(id); return n; });
     setE((x) => ({ ...x, items: x.items.map((p) => (p.invoiceId === id ? { ...p, ...teil } : p)) }));
+  };
+
+  /** Liest eine Leistungsabrechnung / einen Bescheid und füllt Erstattungen und Datum vor. */
+  async function auslesen(datei: File, gelesen?: string) {
+    setLeseStatus({ art: 'laeuft', text: 'Abrechnung wird ausgelesen …' });
+    try {
+      const a = abrechnungAuslesen(gelesen ?? (await textAusDatei(datei, (t) => setLeseStatus({ art: 'laeuft', text: t }))));
+      const { zuordnungen, offen } = abrechnungZuordnen(a, rechnungen.map((x) => x.r));
+      setE((x) => ({ ...x, decisionDate: a.date ?? x.decisionDate, items: positionenAusAbrechnung(x.items, zuordnungen) }));
+      setAus(new Set(zuordnungen.map((z) => z.invoiceId)));
+      if (!neueDateien.includes(datei)) setNeueDateien((n) => [...n, datei]);
+      const pending = zuordnungen.filter((z) => z.pending).length;
+      const erstattet = zuordnungen.reduce((s, z) => s + (z.reimbursed ?? 0), 0);
+      const teile = [
+        `${zuordnungen.length} von ${rechnungen.length} Rechnung(en) zugeordnet`,
+        pending && `${pending} noch offen`,
+        a.total != null && (a.total === erstattet ? `Gesamtsumme ${euro(a.total)} stimmt überein` : `Gesamtsumme laut Abrechnung ${euro(a.total)}, zugeordnet ${euro(erstattet)} – bitte prüfen`),
+      ].filter(Boolean);
+      setLeseStatus(
+        zuordnungen.length
+          ? { art: 'ok', text: `${teile.join(' · ')}.`, offen }
+          : { art: 'leer', text: 'Keine Position der Abrechnung passt zu den Rechnungen dieser Einreichung.', offen },
+      );
+    } catch (err) {
+      setLeseStatus({ art: 'fehler', text: `Abrechnung konnte nicht ausgelesen werden: ${err instanceof Error ? err.message : err}` });
+    }
+  }
+
+  // Mit Beleg geöffnet (z. B. über „Abrechnung einlesen“): sofort auslesen
+  useEffect(() => {
+    if (beleg) void auslesen(beleg, text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const summe = e.items.reduce((s, p) => s + (p.reimbursed ?? 0), 0);
-  const erw = rechnungen.reduce((s, { r }) => s + erwartetFuerRechnung(state, r, e.payer), 0);
+  // Noch offene Positionen zählen nicht zur erwarteten Summe dieses Bescheids
+  const erw = rechnungen.filter(({ p }) => !p.pending).reduce((s, { r }) => s + erwartetFuerRechnung(state, r, e.payer), 0);
 
   return (
     <Modal titel={`Bescheid – ${ktName(e.payer, personen[0])} – ${namen(personen)}`} onClose={onClose} breit>
@@ -404,6 +524,19 @@ function BescheidFormular({ einreichung, onClose }: { einreichung: Submission; o
         </div>
 
         <div className="zeile rechts">
+          <label className="button klein" title="PDF oder Foto der Leistungsabrechnung bzw. des Bescheids – Erstattungen werden den Rechnungen zugeordnet">
+            📄 Abrechnung auslesen
+            <input
+              type="file"
+              accept="application/pdf,image/*"
+              hidden
+              onChange={(ev) => {
+                const f = ev.target.files?.[0];
+                ev.target.value = '';
+                if (f) void auslesen(f);
+              }}
+            />
+          </label>
           <button
             type="button"
             className="klein"
@@ -416,6 +549,19 @@ function BescheidFormular({ einreichung, onClose }: { einreichung: Submission; o
           </button>
         </div>
 
+        {leseStatus && (
+          <div className={`lesestatus ${leseStatus.art}`} role="status">
+            {leseStatus.art === 'laeuft' ? '⏳ ' : leseStatus.art === 'ok' ? '✓ ' : leseStatus.art === 'fehler' ? '⚠️ ' : 'ℹ️ '}
+            {leseStatus.text}
+            {!!leseStatus.offen?.length && (
+              <details>
+                <summary>{leseStatus.offen.length} Position(en) der Abrechnung ohne passende Rechnung</summary>
+                <ul>{leseStatus.offen.map((z, i) => <li key={i}>{datum(z.date)} · {z.amounts.map(euro).join(' / ')}{z.pending && ' · noch offen'}</li>)}</ul>
+              </details>
+            )}
+          </div>
+        )}
+
         <div className="tabelle-wrap">
           <table className="tabelle kompakt">
             <thead>
@@ -424,17 +570,26 @@ function BescheidFormular({ einreichung, onClose }: { einreichung: Submission; o
                 <th className="zahl">Betrag</th>
                 <th className="zahl">Erwartet</th>
                 <th>Erstattet</th>
+                <th title="Im Bescheid noch nicht abgerechnet">Noch offen</th>
                 <th>Bemerkung (z. B. Kürzungsgrund)</th>
               </tr>
             </thead>
             <tbody>
               {rechnungen.map(({ p, r }) => (
-                <tr key={r.id}>
+                <tr key={r.id} className={aus.has(r.id) ? 'erkannt' : ''}>
                   <td>{datum(r.date)} · {r.provider}{personen.length > 1 && <> · {personById(r.personId)?.name}</>}</td>
                   <td className="zahl">{euro(r.amount)}</td>
                   <td className="zahl">{euro(erwartetFuerRechnung(state, r, e.payer))}</td>
-                  <td><BetragFeld wert={p.reimbursed} onChange={(c) => setPos(r.id, { erstattet: c })} /></td>
-                  <td><input value={p.remark ?? ''} onChange={(ev) => setPos(r.id, { bemerkung: ev.target.value })} /></td>
+                  <td>{!p.pending && <BetragFeld wert={p.reimbursed} onChange={(c) => setPos(r.id, { reimbursed: c })} />}</td>
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label="Noch offen"
+                      checked={!!p.pending}
+                      onChange={(ev) => setPos(r.id, { pending: ev.target.checked || undefined, reimbursed: ev.target.checked ? undefined : p.reimbursed })}
+                    />
+                  </td>
+                  <td><input value={p.remark ?? ''} onChange={(ev) => setPos(r.id, { remark: ev.target.value })} /></td>
                 </tr>
               ))}
             </tbody>
@@ -444,12 +599,15 @@ function BescheidFormular({ einreichung, onClose }: { einreichung: Submission; o
                 <td className="zahl">{euro(rechnungen.reduce((s, { r }) => s + r.amount, 0))}</td>
                 <td className="zahl">{euro(erw)}</td>
                 <td className="zahl">{euro(summe)}</td>
+                <td></td>
                 <td>{summe !== erw && <span className={summe < erw ? 'rot' : 'ok'}>Abweichung {euro(summe - erw)}</span>}</td>
               </tr>
             </tfoot>
           </table>
         </div>
-        <small className="grau">Leere Beträge gelten als 0 € (abgelehnt). Abgelehnte Rechnungen können später erneut eingereicht werden.</small>
+        <small className="grau">
+          Leere Beträge gelten als 0 € (abgelehnt) und können erneut eingereicht werden. „Noch offen“: im Bescheid noch nicht abgerechnet – die Rechnung bleibt eingereicht.
+        </small>
 
         <Feld label="Bescheid (PDF / Foto)" gruppe breit>
           <DateiFeld vorhandene={dateiIds} onVorhandene={setDateiIds} neue={neueDateien} onNeue={setNeueDateien} />

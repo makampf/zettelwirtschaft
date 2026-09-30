@@ -125,6 +125,8 @@ export interface SubmissionItem {
   /** Erstatteter Betrag laut Bescheid in Cent. */
   reimbursed?: number;
   remark?: string;
+  /** Im Bescheid noch nicht abgerechnet („noch offen“) – gilt weiter als eingereicht. */
+  pending?: boolean;
 }
 
 export type SubmissionStatus = 'submitted' | 'decided';

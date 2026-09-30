@@ -13,6 +13,8 @@ interface Store {
   speicherePerson: (p: Person) => void;
   loeschePerson: (id: string) => void;
   speichereRechnung: (r: Invoice) => void;
+  /** Speichert mehrere Rechnungen in einem Schritt (Massenbearbeitung). */
+  speichereRechnungen: (rs: Invoice[]) => void;
   loescheRechnung: (id: string) => Promise<void>;
   speichereEinreichung: (e: Submission) => void;
   loescheEinreichung: (id: string) => Promise<void>;
@@ -131,6 +133,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             .filter((e) => e.personIds.length > 0),
         })),
       speichereRechnung: (r) => aendern((s) => ({ ...s, invoices: upsert(s.invoices, r) })),
+      speichereRechnungen: (rs) => aendern((s) => ({ ...s, invoices: rs.reduce(upsert, s.invoices) })),
       loescheRechnung: async (id) => {
         const r = state.invoices.find((x) => x.id === id);
         if (r) await dateienEntfernen(r.fileIds);

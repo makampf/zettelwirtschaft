@@ -1,4 +1,4 @@
-import { bekannterErbringerImText, kennwoerter } from '../providers';
+import { bekannterErbringerImText, kennwoerter, normalisiere } from '../providers';
 import { plusTage } from '../format';
 import type { ServiceKind, Person } from '../types';
 
@@ -32,7 +32,7 @@ export interface ParserKontext {
 
 const BETRAG = /(?<![\d,.])(\d{1,3}(?:[.\s]\d{3})+|\d+),(\d{2})(?![\d])|(?<![\d,.])(\d+)\.(\d{2})(?=\s*(?:€|EUR))/g;
 
-function betraegeIn(zeile: string): number[] {
+export function betraegeIn(zeile: string): number[] {
   const liste: number[] = [];
   for (const m of zeile.matchAll(BETRAG)) {
     const euro = (m[1] ?? m[3]).replace(/[.\s]/g, '');
@@ -91,7 +91,7 @@ function iso(t: number, m: number, j: number): string | undefined {
   return `${j}-${String(m).padStart(2, '0')}-${String(t).padStart(2, '0')}`;
 }
 
-function datenIn(zeile: string): string[] {
+export function datenIn(zeile: string): string[] {
   const liste: { pos: number; d: string }[] = [];
   for (const m of zeile.matchAll(DATUM_ZAHL)) {
     const d = iso(Number(m[1]), Number(m[2]), Number(m[3]));
@@ -303,23 +303,37 @@ const PFLEGE = /pflegegrad|pflegeleistung|pflegesachleistung|pflegedienst|pflege
 const VORSORGE = /vorsorgeuntersuchung|vorsorge\b|früherkennung|check-?\s?up|gesundheitsuntersuchung|krebsvorsorge/i;
 
 function findePerson(zeilen: string[], personen: ParserKontext['personen']): string | undefined {
+  // Namen als Wortmengen: passt auch bei „Mustermann, Erika“, anderer Reihenfolge oder fehlenden Umlauten (OCR)
   const varianten = personen.flatMap((p) =>
     (p.invoiceNames ?? '')
       .split(',')
-      .map((n) => n.trim().toLowerCase().replace(/\s+/g, ' '))
-      .filter((n) => n.length >= 3)
-      .map((n) => ({ id: p.id, n })),
+      .map((n) => normalisiere(n).split(' ').filter((w) => w.length >= 2))
+      .filter((w) => w.join('').length >= 3)
+      .map((woerter) => ({ id: p.id, woerter })),
   );
   if (!varianten.length) return undefined;
-  const norm = (z: string) => z.toLowerCase().replace(/\s+/g, ' ');
-  // Bevorzugt die Zeile, die den Patienten nennt (Empfänger kann ein Angehöriger sein)
-  const patientZeilen = zeilen.flatMap((z, i) => (/patient|versicherte|behandelte|leistungsempfänger|bewohner|für\s*:/i.test(z) ? [z, zeilen[i + 1] ?? ''] : []));
-  for (const quelle of [patientZeilen, zeilen]) {
-    const treffer = new Set(varianten.filter((v) => quelle.some((z) => norm(z).includes(v.n))).map((v) => v.id));
-    if (treffer.size === 1) return [...treffer][0];
-  }
-  return undefined;
+  const woerterJeZeile = zeilen.map((z) => new Set(normalisiere(z).split(' ')));
+  const treffer = (idx: number[]) =>
+    new Set(varianten.filter((v) => idx.some((i) => v.woerter.every((w) => woerterJeZeile[i].has(w)))).map((v) => v.id));
+  const eindeutig = (s: Set<string>) => (s.size === 1 ? [...s][0] : undefined);
+  const alle = zeilen.map((_, i) => i);
+  // 1. Zeilen, die den Patienten nennen (Empfänger kann ein Angehöriger oder Bevollmächtigter sein)
+  const patient = alle.filter((i) => PATIENT.test(zeilen[i]) || (i > 0 && PATIENT_DAVOR.test(zeilen[i - 1])));
+  const ausPatient = eindeutig(treffer(patient));
+  if (ausPatient) return ausPatient;
+  // 2. Ganzer Beleg
+  const ueberall = treffer(alle);
+  if (ueberall.size <= 1) return eindeutig(ueberall);
+  // 3. Mehrdeutig: wer nur im Anschriftenfeld steht (z. B. „c/o“, Bevollmächtigte), ist vermutlich nicht der Patient
+  const anschrift = alle.slice(0, 15).filter((i) => ANSCHRIFT.test(zeilen[i]) || (i > 0 && ANSCHRIFT.test(zeilen[i - 1])));
+  const nurAnschrift = treffer(anschrift);
+  const rest = treffer(alle.filter((i) => !anschrift.includes(i)));
+  return eindeutig(new Set([...ueberall].filter((id) => rest.has(id) || !nurAnschrift.has(id))));
 }
+
+const PATIENT = /patient|versicherte|behandelte|leistungsempfänger|bewohner|für\s*:|geb(\.|oren|urtsdatum)|\*\s?\d{1,2}\.\d{1,2}\.\d{2,4}/i;
+const PATIENT_DAVOR = /patient(in)?\s*:?\s*$|leistungsempfänger\s*:?\s*$|behandelte\s+person\s*:?\s*$/i;
+const ANSCHRIFT = /c\/o|z\.\s?hd|bevollmächtigt|betreuer|herrn?\b|frau\b/i;
 
 /** Liest die wichtigsten Angaben aus dem Text einer Rechnung. */
 export function rechnungAuslesen(roh: string, k: ParserKontext): Recognition {

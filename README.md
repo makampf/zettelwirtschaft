@@ -17,7 +17,10 @@ oder, in der GitHub-Pages- bzw. Datei-Version, **nur lokal im Browser** (Indexed
   und **Beitragsrückerstattung**. Kranken- und Pflegeversicherung sind standardmäßig **ein gemeinsamer Vertrag** (gleiche
   Nummer, eine Einreichung, gemeinsamer Selbstbehalt und BRE, eigene Quote für Pflege); bei Bedarf lässt sich die PPV abtrennen
 - **Gemeinsam versicherte Personen** (z. B. Großeltern): Einreichungen und Belegliste enthalten die Rechnungen beider
+  (die Verknüpfung wird bei beiden eingetragen; Versicherungsdaten lassen sich vom Partner übernehmen)
 - **Rechnungen** erfassen (Krankheit oder Pflege) inkl. Belegen als PDF/Foto, Zahlungsziel und Bezahlt-Datum
+  - **Massenbearbeitung:** mehrere Rechnungen auswählen und gemeinsam als bezahlt markieren, zurückhalten/freigeben,
+    Art, Vorsorge oder Person ändern oder löschen
   - **Aus Beleg erfassen:** PDF oder Foto hochladen (am Handy direkt mit der Kamera) – Betrag, Rechnungsdatum, Zahlungsziel,
     Rechnungsnummer, Leistungserbringer, Krankheit/Pflege, Vorsorge und die Person werden automatisch vorausgefüllt und
     zur Prüfung markiert. Das Auslesen läuft vollständig auf dem eigenen Gerät (PDF-Text bzw. Texterkennung im Browser);
@@ -35,8 +38,12 @@ oder, in der GitHub-Pages- bzw. Datei-Version, **nur lokal im Browser** (Indexed
   die mögliche Erstattung (nach Selbstbehalt) mit der BRE und empfiehlt *einreichen* oder *zurückhalten* – mit einem Klick umsetzbar.
   Beim Anlegen einer PKV-Einreichung warnt die App, wenn dadurch die BRE eines Jahres entfällt.
 - **Einreichungen**: offene Rechnungen je Stelle bündeln – auch für mehrere Personen gemeinsam – Antragsnummer und Weg (App, Post …) festhalten,
-  Belegliste zum Beilegen drucken
+  Belegliste zum Beilegen drucken. Zurückgehaltene Rechnungen (BRE) erscheinen dort ebenfalls und werden durch Auswählen freigegeben;
+  angeboten werden nur Stellen, die für die Person zuständig sind (Beihilfe nur bei Berechtigung)
 - **Bescheide** erfassen: tatsächlich erstattete Beträge und Kürzungsgründe je Rechnung; abgelehnte Rechnungen können erneut eingereicht werden
+  - **Abrechnung einlesen:** PDF oder Foto einer Leistungsabrechnung bzw. eines Beihilfebescheids hochladen – die Positionen
+    werden über Rechnungsdatum und Betrag den Rechnungen der passenden Einreichung zugeordnet, Erstattungen, Datum und
+    „noch offen“ vorausgefüllt und mit der Gesamtsumme abgeglichen.
 - **Übersicht** je Person: was ist noch zu bezahlen, was noch einzureichen, welche Erstattungen stehen aus, Eigenanteil im Jahr
 - **Hinweise** auf überfällige Zahlungen, ablaufende Beihilfe-Antragsfristen und Einreichungen, die seit über 6 Wochen ohne Bescheid sind
 - **Auswertung** je Jahr und Person mit CSV-Export (hilfreich für außergewöhnliche Belastungen in der Steuererklärung)

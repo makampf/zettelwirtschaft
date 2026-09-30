@@ -66,6 +66,7 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
   const ppv = (teil: Partial<Person['ppv']>) => setP((x) => ({ ...x, ppv: { ...x.ppv, ...teil } }));
   const prozent = (v: string) => Math.max(0, Math.min(100, Number(v) || 0));
   const hatRechnungen = person && state.invoices.some((r) => r.personId === person.id);
+  const partner = state.people.find((x) => x.id === p.partnerId && x.id !== p.id);
 
   return (
     <Modal titel={person ? `${person.name} bearbeiten` : 'Neue Person'} onClose={onClose} breit>
@@ -83,11 +84,19 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
           <Feld label="Name auf Rechnungen" hinweis="Vollständiger Name, z. B. „Erika Mustermann“ – damit Belege automatisch der Person zugeordnet werden. Mehrere Schreibweisen mit Komma trennen.">
             <input value={p.invoiceNames ?? ''} onChange={(e) => setP({ ...p, invoiceNames: e.target.value || undefined })} />
           </Feld>
-          <Feld label="Gemeinsam versichert mit" hinweis="Einreichungen enthalten dann standardmäßig die Rechnungen beider">
+          <Feld
+            label="Gemeinsam versichert mit"
+            hinweis="Z. B. beim Ehepartner mitversichert. Wird bei beiden automatisch eingetragen – Einreichungen und Belegliste enthalten dann die Rechnungen beider."
+          >
             <select value={p.partnerId ?? ''} onChange={(e) => setP({ ...p, partnerId: e.target.value || undefined })}>
               <option value="">– niemand –</option>
               {state.people.filter((x) => x.id !== p.id).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
+            {partner && (
+              <button type="button" className="klein" onClick={() => setP(versicherungUebernehmen(p, partner))}>
+                Versicherungsdaten von {partner.name} übernehmen
+              </button>
+            )}
           </Feld>
           <Feld label="Farbe" gruppe>
             <div className="farben">
@@ -233,4 +242,17 @@ function PersonFormular({ person, onClose }: { person?: Person; onClose: () => v
       </form>
     </Modal>
   );
+}
+
+/**
+ * Übernimmt Beihilfe- und Versicherungsangaben des Partners (gleicher Vertrag, gleiche Nummern).
+ * Die Beitragsrückerstattung bleibt persönlich – ihr Betrag unterscheidet sich meist je Person.
+ */
+function versicherungUebernehmen(p: Person, von: Person): Person {
+  return {
+    ...p,
+    beihilfe: { ...von.beihilfe },
+    pkv: { ...von.pkv, premiumRefundEnabled: p.pkv.premiumRefundEnabled, premiumRefund: p.pkv.premiumRefund },
+    ppv: { ...von.ppv },
+  };
 }

@@ -80,6 +80,12 @@ export default function Invoices() {
   const summe = zeilen.reduce((s, z) => s + z.r.amount, 0);
   const eigen = zeilen.reduce((s, z) => s + z.u.eigenanteil, 0);
 
+  // Mehrfachauswahl für die Massenbearbeitung – nur sichtbare Rechnungen zählen
+  const [markiert, setMarkiert] = useState<Set<string>>(new Set());
+  const auswahl = zeilen.filter((z) => markiert.has(z.r.id)).map((z) => z.r);
+  const alleMarkiert = zeilen.length > 0 && auswahl.length === zeilen.length;
+  const markieren = (id: string) => setMarkiert((m) => { const n = new Set(m); if (!n.delete(id)) n.add(id); return n; });
+
   return (
     <section>
       <div className="seitenkopf">
@@ -110,8 +116,8 @@ export default function Invoices() {
         </div>
         <select value={art} onChange={(e) => setArt(e.target.value as ServiceKind | '')} aria-label="Art">
           <option value="">Krankheit &amp; Pflege</option>
-          <option value="krankheit">Krankheit</option>
-          <option value="pflege">Pflege</option>
+          <option value="illness">Krankheit</option>
+          <option value="care">Pflege</option>
         </select>
         <select value={jahr} onChange={(e) => setJahr(e.target.value)} aria-label="Jahr">
           <option value="">Alle Jahre</option>
@@ -120,6 +126,8 @@ export default function Invoices() {
         <input type="search" placeholder="Suchen …" value={suche} onChange={(e) => setSuche(e.target.value)} />
       </div>
 
+      {auswahl.length > 0 && <MassenLeiste auswahl={auswahl} onFertig={() => setMarkiert(new Set())} />}
+
       {zeilen.length === 0 ? (
         <Leer>Keine Rechnungen gefunden.</Leer>
       ) : (
@@ -127,6 +135,14 @@ export default function Invoices() {
           <table className="tabelle klickbar">
             <thead>
               <tr>
+                <th className="auswahl">
+                  <input
+                    type="checkbox"
+                    aria-label="Alle auswählen"
+                    checked={alleMarkiert}
+                    onChange={() => setMarkiert(alleMarkiert ? new Set() : new Set(zeilen.map((z) => z.r.id)))}
+                  />
+                </th>
                 <th>Datum</th>
                 <th>Person</th>
                 <th>Leistungserbringer</th>
@@ -139,7 +155,10 @@ export default function Invoices() {
             </thead>
             <tbody>
               {zeilen.map(({ r, person, u }) => (
-                <tr key={r.id} onClick={() => setBearbeiten({ r, n: 0 })}>
+                <tr key={r.id} onClick={() => setBearbeiten({ r, n: 0 })} className={markiert.has(r.id) ? 'markiert' : ''}>
+                  <td className="auswahl" onClick={(ev) => { ev.stopPropagation(); markieren(r.id); }}>
+                    <input type="checkbox" aria-label="Auswählen" checked={markiert.has(r.id)} onChange={() => markieren(r.id)} onClick={(ev) => ev.stopPropagation()} />
+                  </td>
                   <td>{datum(r.date)}</td>
                   <td><PersonChip person={person} /></td>
                   <td>
@@ -156,7 +175,7 @@ export default function Invoices() {
             </tbody>
             <tfoot>
               <tr>
-                <td colSpan={4}>{zeilen.length} Rechnung(en)</td>
+                <td colSpan={5}>{zeilen.length} Rechnung(en)</td>
                 <td className="zahl">{euro(summe)}</td>
                 <td colSpan={2}></td>
                 <td className="zahl">{euro(eigen)}</td>
@@ -196,6 +215,75 @@ function leereRechnung(personId: string, art: ServiceKind = 'illness'): Invoice 
     fileIds: [],
     note: '',
   };
+}
+
+/** Aktionsleiste für mehrere ausgewählte Rechnungen. */
+function MassenLeiste({ auswahl, onFertig }: { auswahl: Invoice[]; onFertig: () => void }) {
+  const { state, personById, speichereRechnungen, loescheRechnung } = useStore();
+  const [bezahltAm, setBezahltAm] = useState(heute());
+  const summe = auswahl.reduce((s, r) => s + r.amount, 0);
+  const aendern = (fn: (r: Invoice) => Invoice) => speichereRechnungen(auswahl.map(fn));
+  // Zurückhalten betrifft die private Versicherung der jeweiligen Person (PKV bzw. PPV)
+  const halten = (ja: boolean) =>
+    aendern((r) => {
+      const p = personById(r.personId);
+      if (!p) return r;
+      const kt = versicherungFuer(r.kind, p);
+      const ohne = r.heldBack.filter((k) => k !== kt);
+      return { ...r, heldBack: ja ? [...ohne, kt] : ohne };
+    });
+
+  return (
+    <div className="massen" role="toolbar" aria-label="Massenbearbeitung">
+      <strong>{auswahl.length} ausgewählt · {euro(summe)}</strong>
+      <div className="massen-gruppe">
+        <input type="date" value={bezahltAm} onChange={(e) => setBezahltAm(e.target.value)} aria-label="Bezahlt am" />
+        <button className="klein" disabled={!bezahltAm} onClick={() => aendern((r) => ({ ...r, paidDate: bezahltAm }))}>Als bezahlt markieren</button>
+        <button className="klein" onClick={() => aendern((r) => ({ ...r, paidDate: undefined }))}>Unbezahlt</button>
+      </div>
+      <div className="massen-gruppe">
+        <button className="klein" onClick={() => halten(true)} title="Bei der Versicherung zurückhalten (Beitragsrückerstattung)">Zurückhalten</button>
+        <button className="klein" onClick={() => halten(false)} title="Zur Einreichung bei der Versicherung freigeben">Freigeben</button>
+      </div>
+      <div className="massen-gruppe">
+        <select
+          value=""
+          aria-label="Ändern"
+          onChange={(e) => {
+            const [feld, wert] = e.target.value.split(':');
+            if (feld === 'kind') aendern((r) => ({ ...r, kind: wert as ServiceKind, preventive: wert === 'care' ? false : r.preventive }));
+            if (feld === 'preventive') aendern((r) => ({ ...r, preventive: r.kind === 'illness' && wert === 'ja' }));
+            if (feld === 'person') aendern((r) => ({ ...r, personId: wert }));
+          }}
+        >
+          <option value="">Ändern …</option>
+          <optgroup label="Art">
+            <option value="kind:illness">Krankheit</option>
+            <option value="kind:care">Pflege</option>
+          </optgroup>
+          <optgroup label="Vorsorge">
+            <option value="preventive:ja">Vorsorgeuntersuchung</option>
+            <option value="preventive:nein">keine Vorsorge</option>
+          </optgroup>
+          <optgroup label="Person">
+            {state.people.map((p) => <option key={p.id} value={`person:${p.id}`}>{p.name}</option>)}
+          </optgroup>
+        </select>
+      </div>
+      <span className="abstand" />
+      <button
+        className="klein gefahr"
+        onClick={async () => {
+          if (!confirm(`${auswahl.length} Rechnung(en) mit ihren Belegen löschen?`)) return;
+          for (const r of auswahl) await loescheRechnung(r.id);
+          onFertig();
+        }}
+      >
+        Löschen
+      </button>
+      <button className="klein" onClick={onFertig}>Auswahl aufheben</button>
+    </div>
+  );
 }
 
 export function RechnungFormular({

@@ -222,6 +222,32 @@ innerhalb von fünf Tagen ab Rechnungsdatum auf eines meiner Konten.`;
     expect(rechnungAuslesen('Hallo Welt', kontext)).toEqual({ kind: 'illness' });
   });
 
+  describe('Person', () => {
+    const person = (text: string) => rechnungAuslesen(text, kontext).personId;
+
+    it('erkennt „Nachname, Vorname“ und fehlende Umlaute', () => {
+      expect(person('Patientin: Mustermann, Erika\nSumme 10,00 €')).toBe('oma');
+      expect(person('Behandelt: MUSTERMANN HANS\nSumme 10,00 €')).toBe('opa');
+      const mitUmlaut = { ...kontext, personen: [{ id: 'x', invoiceNames: 'Jürgen Müßig' }] };
+      expect(rechnungAuslesen('Patient Juergen Mussig\nMussig, Jurgen', mitUmlaut).personId).toBe('x');
+    });
+
+    it('nimmt den Patienten, nicht den Bevollmächtigten im Anschriftenfeld', () => {
+      const text = `Klinik Musterstadt
+Frau
+Erika Mustermann
+c/o Max Mustermann
+Musterweg 1
+90000 Musterstadt
+Rechnung Nr. 4711
+Erika Mustermann, geb. 01.02.1941
+Summe 100,00 €`;
+      expect(person(text)).toBe('oma');
+      // auch ohne ausdrückliche Patientenzeile
+      expect(person('Herrn\nHans Mustermann\nc/o Max Mustermann\nMusterweg 1\nLeistung für Erika Mustermann\nSumme 5,00 €')).toBe('oma');
+    });
+  });
+
   it('ordnet mehrdeutige Namen keiner Person zu', () => {
     const e = rechnungAuslesen('Erika Mustermann und Hans Mustermann\nSumme 10,00 €', kontext);
     expect(e.personId).toBeUndefined();

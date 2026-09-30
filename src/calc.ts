@@ -126,7 +126,9 @@ export function traegerInfo(r: Invoice, person: Person, kt: Payer, ctx: Kontext)
     return { kt, status: r.heldBack.includes(kt) ? 'nicht_einreichen' : 'offen', erwartet: erw };
   }
   if (letzte.status === 'submitted') return { kt, status: 'eingereicht', erwartet: erw, einreichung: letzte };
-  const erst = letzte.items.find((p) => p.invoiceId === r.id)?.reimbursed ?? 0;
+  const pos = letzte.items.find((p) => p.invoiceId === r.id);
+  if (pos?.pending) return { kt, status: 'eingereicht', erwartet: erw, einreichung: letzte };
+  const erst = pos?.reimbursed ?? 0;
   return { kt, status: erst > 0 ? 'erstattet' : 'abgelehnt', erwartet: erw, erstattet: erst, einreichung: letzte };
 }
 
@@ -176,6 +178,22 @@ export function einreichbareRechnungen(state: AppState, personId: string, kt: Pa
       return s === 'offen' || s === 'abgelehnt';
     })
     .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Rechnungen, die bei einem Kostenträger bewusst zurückgehalten werden (z. B. für die BRE) und noch nicht eingereicht sind. */
+export function zurueckgehalteneRechnungen(state: AppState, personId: string, kt: Payer, ausserEinreichung?: string): Invoice[] {
+  const person = state.people.find((p) => p.id === personId);
+  if (!person) return [];
+  const ctx: Kontext = { invoices: state.invoices, submissions: state.submissions.filter((e) => e.id !== ausserEinreichung) };
+  return state.invoices
+    .filter((r) => r.personId === personId && traegerFuer(r.kind, person).includes(kt) && traegerInfo(r, person, kt, ctx).status === 'nicht_einreichen')
+    .sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/** Stellen, bei denen für diese Personen überhaupt eingereicht werden kann (Beihilfe nur bei Berechtigung). */
+export function zustaendigeStellen(personen: Person[]): Payer[] {
+  const stellen = new Set(personen.flatMap((p) => [...traegerFuer('illness', p), ...traegerFuer('care', p)]));
+  return (['beihilfe', 'pkv', 'ppv'] as Payer[]).filter((k) => stellen.has(k));
 }
 
 // ---------------------------------------------------------------------------

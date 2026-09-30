@@ -119,6 +119,17 @@ legend { font-weight: 600; padding: 0 0.35rem; }
 .filterleiste { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; align-items: center; }
 .filterleiste select, .filterleiste input { width: auto; }
 .filterleiste input[type='search'] { flex: 1; min-width: 160px; }
+.massen {
+  position: sticky; top: 0.5rem; z-index: 5; display: flex; flex-wrap: wrap; gap: 0.5rem 0.75rem; align-items: center;
+  margin-bottom: 0.75rem; padding: 0.6rem 0.75rem; background: var(--blau-bg); border: 1px solid var(--primaer);
+  border-radius: 10px; box-shadow: var(--schatten);
+}
+.massen-gruppe { display: flex; gap: 0.35rem; align-items: center; flex-wrap: wrap; }
+.massen input, .massen select { width: auto; }
+.tabelle .auswahl { width: 2rem; padding-right: 0; }
+.tabelle tr.markiert td { background: var(--blau-bg); }
+.tabelle tr.erkannt td { background: var(--gelb-bg); }
+.lesestatus details { margin-top: 0.3rem; }
 .leer { padding: 2rem; text-align: center; color: var(--grau); background: var(--flaeche); border: 1px dashed var(--rand); border-radius: 12px; margin-bottom: 1rem; }
 
 /* Tabellen */

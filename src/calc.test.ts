@@ -11,6 +11,8 @@ import {
   standardZurueckhalten,
   traegerFuer,
   traegerInfo,
+  zurueckgehalteneRechnungen,
+  zustaendigeStellen,
 } from './calc';
 import { parseEuro, plusMonate, tageZwischen } from './format';
 import { migriere } from './migration';
@@ -121,6 +123,25 @@ describe('Erstattung mit Beihilfe', () => {
     expect(u.ausstehend).toBe(6000); // PKV 30 % noch offen
     expect(u.eigenanteil).toBe(1000);
     expect(u.abgeschlossen).toBe(false);
+  });
+
+  it('„noch offen“ im Bescheid gilt weiter als eingereicht', () => {
+    const { state, oma } = setup();
+    const r = rechnung({ personId: oma.id });
+    state.invoices.push(r);
+    state.submissions.push(einreichung({ personId: oma.id, payer: 'pkv', status: 'decided', items: [{ invoiceId: r.id, pending: true }] }));
+    expect(traegerInfo(r, oma, 'pkv', state).status).toBe('eingereicht');
+    expect(einreichbareRechnungen(state, oma.id, 'pkv')).toHaveLength(0);
+  });
+
+  it('zurückgehaltene Rechnungen und zuständige Stellen', () => {
+    const { state, ich, oma } = setup();
+    const r = rechnung({ personId: ich.id, heldBack: ['pkv'] });
+    state.invoices.push(r, rechnung({ personId: ich.id }));
+    expect(zurueckgehalteneRechnungen(state, ich.id, 'pkv').map((x) => x.id)).toEqual([r.id]);
+    expect(zustaendigeStellen([ich])).toEqual(['pkv']);
+    expect(zustaendigeStellen([ich, oma])).toEqual(['beihilfe', 'pkv']);
+    expect(zustaendigeStellen([{ ...ich, pkv: { ...ich.pkv, includesCare: false } }])).toEqual(['pkv', 'ppv']);
   });
 
   it('behandelt 0 € als abgelehnt und erlaubt erneute Einreichung', () => {
