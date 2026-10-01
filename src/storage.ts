@@ -1,6 +1,19 @@
 import { browserSpeicher } from './storage-browser';
 import { serverSpeicher } from './storage-server';
+import type { EingangsEintrag } from './eingang';
 import type { AppState, FileMeta } from './types';
+
+/** Dokumente, die von außen an den Server geschickt wurden (nur Server, wenn IMPORT_TOKEN gesetzt ist). */
+export interface EingangApi {
+  liste(): Promise<EingangsEintrag[]>;
+  /** Zur Verarbeitung übernehmen; `false`, wenn ein anderes Fenster es schon bearbeitet. */
+  uebernehmen(id: string): Promise<boolean>;
+  /** Zur Prüfung von Hand markieren (mit Grund) bzw. zur erneuten automatischen Verarbeitung freigeben. */
+  status(id: string, status: 'new' | 'review', note?: string): Promise<void>;
+  datei(id: string): Promise<File | undefined>;
+  dateiUrl(id: string): string;
+  loeschen(id: string): Promise<void>;
+}
 
 /** Wo die Daten liegen: lokal im Browser oder in der Datenbank des Servers. */
 export interface Speicher {
@@ -18,6 +31,7 @@ export interface Speicher {
   dateiUrl?(id: string): string;
   loescheDatei(id: string): Promise<void>;
   ersetzeAlles(state: AppState, dateien: Map<string, Blob>): Promise<void>;
+  eingang?: EingangApi;
 }
 
 let aktiv: Speicher = browserSpeicher;
@@ -35,8 +49,8 @@ export async function speicherErmitteln(): Promise<Speicher> {
       const res = await fetch('api/status', { signal: ctrl.signal, credentials: 'same-origin' });
       clearTimeout(timer);
       if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
-        const status = (await res.json()) as { server?: boolean };
-        if (status.server) aktiv = serverSpeicher();
+        const status = (await res.json()) as { server?: boolean; import?: boolean };
+        if (status.server) aktiv = serverSpeicher(!!status.import);
       }
     } catch {
       // kein Server erreichbar → Browser-Speicher

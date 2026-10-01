@@ -47,6 +47,8 @@ oder, in der GitHub-Pages- bzw. Datei-Version, **nur lokal im Browser** (Indexed
     werden über Rechnungsdatum und Betrag den Rechnungen der passenden Einreichung zugeordnet, Erstattungen, Datum und
     „noch offen“ vorausgefüllt und mit der Gesamtsumme abgeglichen. Rechnungen, die in der Abrechnung fehlen, gelten als noch offen;
     wird eine Einreichung in mehreren Abrechnungen beschieden, behält jede Rechnung ihr eigenes Bescheiddatum und ihren Beleg.
+- **Eingang für Paperless-ngx** (nur Server): Dokumente werden per Webhook automatisch angeliefert, ausgelesen und als
+  Rechnung erfasst bzw. als Abrechnung der passenden Einreichung zugeordnet – siehe [Paperless-ngx anbinden](#paperless-ngx-anbinden)
 - **Übersicht** je Person: was ist noch zu bezahlen, was noch einzureichen, welche Erstattungen stehen aus, Eigenanteil im Jahr
 - **Hinweise** auf überfällige Zahlungen, ablaufende Beihilfe-Antragsfristen und Einreichungen, die seit über 6 Wochen ohne Bescheid sind
 - **Auswertung** je Jahr und Person mit CSV-Export (hilfreich für außergewöhnliche Belastungen in der Steuererklärung)
@@ -121,6 +123,50 @@ Host den Dienstnamen der Datenbank verwenden.
 | `APP_USER`, `APP_PASSWORD` | Anmeldung für die App (dringend empfohlen – ohne Passwort ist die App offen) |
 | `PORT` | Port des Servers, Standard `8080` |
 | `MAX_UPLOAD_MB` | Maximale Größe eines Belegs, Standard `25` |
+| `IMPORT_TOKEN` | Zugangsschlüssel für den Import von Dokumenten (z. B. aus Paperless-ngx), mind. 16 Zeichen; ohne Angabe ist der Import abgeschaltet |
+
+### Paperless-ngx anbinden
+
+Rechnungen und Abrechnungen, die in [Paperless-ngx](https://docs.paperless-ngx.com/) landen, kann die App automatisch übernehmen.
+
+1. Einen zufälligen Schlüssel erzeugen (`openssl rand -hex 24`) und als `IMPORT_TOKEN` in die `.env` eintragen,
+   dann `docker compose up -d`.
+2. In Paperless unter *Workflows* einen Workflow anlegen:
+   - **Auslöser:** *Dokument hinzugefügt*, gefiltert z. B. auf einen Tag „Zettelwirtschaft“ oder die Dokumenttypen
+     für Arztrechnungen und Abrechnungen
+   - **Aktion:** *Webhook*
+     - URL: `http://<homeserver>:8080/api/import`
+     - *Dokument einschließen* aktivieren und *Parameter für den Webhook-Body verwenden* einschalten (nicht *als JSON senden*)
+     - Parameter (alle optional): `title` = `{{ doc_title }}`, `document_type` = `{{ document_type }}`,
+       `correspondent` = `{{ correspondent }}`, `doc_url` = `{{ doc_url }}`
+       (ältere Paperless-Versionen schreiben Platzhalter mit einfachen Klammern: `{doc_title}`)
+     - Header: `Authorization` = `Bearer <IMPORT_TOKEN>`
+3. Falls Paperless Webhooks einschränkt (`PAPERLESS_WEBHOOKS_ALLOWED_PORTS`, `PAPERLESS_WEBHOOKS_ALLOW_INTERNAL_REQUESTS`),
+   Port und Adresse der App dort freigeben.
+
+Ablauf: Der Server legt jedes Dokument im **Eingang** ab (doppelte Dokumente – gleicher Inhalt – werden ignoriert). Die App
+holt den Eingang ab, sobald sie geöffnet ist (danach alle 2 Minuten), und liest jedes Dokument wie einen hochgeladenen Beleg
+auf dem eigenen Gerät aus:
+
+- **Rechnung oder Abrechnung?** Ein Dokumenttyp bzw. Titel mit „Abrechnung“, „Bescheid“ oder „Erstattung“ steht für eine Abrechnung,
+  einer mit „Rechnung“ für eine Rechnung; sonst entscheidet der Text. Eindeutig festlegen lässt es sich mit dem Parameter
+  `kind` = `invoice` bzw. `statement` (z. B. ein Workflow je Dokumenttyp).
+- **Rechnungen** werden angelegt, wenn Betrag, Rechnungsdatum, Person und Leistungserbringer erkannt werden (ersatzweise der
+  Korrespondent aus Paperless) und kein mögliches Duplikat existiert. Sie sind mit „prüfen“ markiert, bis sie einmal im
+  Formular gespeichert wurden.
+- **Abrechnungen** werden übernommen, wenn die Stelle (Beihilfe oder Versicherung) erkennbar ist, alle Positionen über
+  Rechnungsdatum und Betrag passen und die Gesamtsumme aufgeht – auch verteilt auf mehrere Einreichungen.
+- Alles andere bleibt im Eingang auf der **Übersicht** mit dem Grund und lässt sich dort mit einem Klick als Rechnung bzw.
+  Abrechnung erfassen, erneut auslesen oder löschen.
+
+Ohne Paperless lässt sich der Import auch per Skript nutzen:
+
+```sh
+curl -H "Authorization: Bearer $IMPORT_TOKEN" -F file=@rechnung.pdf -F kind=invoice http://<homeserver>:8080/api/import
+```
+
+Antwort: `201` (im Eingang abgelegt), `200` mit `"duplicate": true` (schon vorhanden), `401` (falscher Schlüssel),
+`413` (zu groß), `415` (kein PDF/Bild). Der Import-Pfad braucht keine App-Anmeldung, nur den Schlüssel.
 
 ### Sicherheit
 
@@ -134,7 +180,8 @@ Die Anmeldung erfolgt per HTTP Basic Auth und ist ohne HTTPS nicht abhörsicher.
   öffnen und dort *Daten → Sicherung einspielen*.
 - **Backup der Datenbank:** `docker compose exec db pg_dump -U zettelwirtschaft zettelwirtschaft > zettelwirtschaft-$(date +%F).sql`
   (enthält auch alle Belege).
-- Die Daten stehen als JSON (Spalte `data`) in den Tabellen `people`, `invoices`, `submissions`; Belege in `files`.
+- Die Daten stehen als JSON (Spalte `data`) in den Tabellen `people`, `invoices`, `submissions`; Belege in `files`,
+  noch nicht erfasste Dokumente aus dem Import in `inbox`.
   Beispiel: `SELECT data->>'provider', (data->>'amount')::int / 100.0 FROM invoices;`
 
 ## Online-Version

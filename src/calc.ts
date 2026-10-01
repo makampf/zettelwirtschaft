@@ -312,6 +312,10 @@ export function hinweise(state: AppState, stichtag = heute()): Hinweis[] {
     if (!person) continue;
     const titel = `${r.provider || 'Rechnung'} vom ${r.date.split('-').reverse().join('.')}`;
 
+    if (r.toReview) {
+      liste.push({ stufe: 'info', personId: person.id, rechnungId: r.id, text: `${titel}: automatisch aus dem Eingang erfasst – bitte prüfen und speichern` });
+    }
+
     if (!r.paidDate && r.dueDate) {
       const tage = tageZwischen(stichtag, r.dueDate);
       if (tage < 0) {
@@ -355,6 +359,15 @@ export function hinweise(state: AppState, stichtag = heute()): Hinweis[] {
   }
 
   for (const e of state.submissions) {
+    if (e.toReview) {
+      const name = ktKurz(e.payer, personen.get(e.personIds[0]));
+      liste.push({
+        stufe: 'info',
+        personId: e.personIds[0],
+        einreichungId: e.id,
+        text: `${name}-Bescheid vom ${(e.decisionDate ?? '').split('-').reverse().join('.')}: automatisch aus dem Eingang übernommen – bitte prüfen und speichern`,
+      });
+    }
     // Auch teilweise beschiedene Einreichungen mit noch offenen Rechnungen
     if (e.status !== 'submitted' && !e.items.some((p) => p.pending)) continue;
     const tage = tageZwischen(e.submittedDate, stichtag);

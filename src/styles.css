@@ -254,3 +254,15 @@ legend { font-weight: 600; padding: 0 0.35rem; }
 .feld > button { align-self: flex-start; }
 .beleg-oben { margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--rand); }
 .beleg-oben .feld.breit { margin-top: 0; }
+
+/* Eingang (Dokumente von Paperless-ngx o. Ä.) */
+.eingang { margin-bottom: 1.25rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.eingang-kopf { display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; }
+.eingang-kopf h2 { margin: 0; font-size: 1.05rem; }
+.eingang p { margin: 0.25rem 0 0; }
+.eingang-liste { list-style: none; margin: 0; padding: 0; }
+.eingang-liste li { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.4rem 0.75rem; padding: 0.4rem 0; border-bottom: 1px solid var(--rand); }
+.eingang-liste li:last-child { border-bottom: none; }
+.eingang-liste .knoepfe { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.eingang .link { align-self: flex-start; }
+.badge.tag.pruefen { background: var(--gelb-bg); color: var(--gelb); }

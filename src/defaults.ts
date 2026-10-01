@@ -1,5 +1,5 @@
-import { neueId } from './format';
-import type { AppState, Person } from './types';
+import { heute, neueId } from './format';
+import type { AppState, Invoice, Person, ServiceKind } from './types';
 
 export function neuePerson(name: string, farbe: string, beihilfeSatz: number | null): Person {
   const satz = beihilfeSatz ?? 0;
@@ -49,5 +49,24 @@ export function startState(): AppState {
     invoices: [],
     submissions: [],
     files: [],
+  };
+}
+
+/** Leere Rechnung als Vorlage für das Formular bzw. den automatischen Import. */
+export function leereRechnung(personId: string, art: ServiceKind = 'illness'): Invoice {
+  return {
+    id: neueId(),
+    personId,
+    kind: art,
+    date: heute(),
+    provider: '',
+    invoiceNumber: '',
+    description: '',
+    amount: 0,
+    preventive: false,
+    heldBack: [],
+    expectedOverride: {},
+    fileIds: [],
+    note: '',
   };
 }

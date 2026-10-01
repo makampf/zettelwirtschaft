@@ -120,6 +120,8 @@ export interface Invoice {
   expectedOverride: Partial<Record<Payer, number>>;
   fileIds: string[];
   note: string;
+  /** Automatisch aus dem Eingang (z. B. Paperless-ngx) erfasst und noch nicht geprüft. */
+  toReview?: boolean;
 }
 
 export interface SubmissionItem {
@@ -153,6 +155,8 @@ export interface Submission {
   items: SubmissionItem[];
   fileIds: string[];
   note: string;
+  /** Bescheid wurde automatisch aus dem Eingang (z. B. Paperless-ngx) übernommen und noch nicht geprüft. */
+  toReview?: boolean;
 }
 
 export interface AppState {

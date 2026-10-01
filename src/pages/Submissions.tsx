@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { breCheck, breRelevant, einreichbareRechnungen, erwartetFuerRechnung, traegerFuer, versicherungFuer, zurueckgehalteneRechnungen, zustaendigeStellen } from '../calc';
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, useDateienSpeichern } from '../components/ui';
 import { datum, euro, heute, neueId } from '../format';
+import { einreichungenFuerAbrechnung } from '../eingang';
 import { useNav } from '../nav';
 import { abgerechnet, abrechnungAuslesen, abrechnungZuordnen, positionenAusAbrechnung, type AbrechnungsZeile } from '../recognition/statement';
 import { textAusDatei } from '../recognition/text';
@@ -39,17 +40,7 @@ export default function Submissions() {
     setEinlesen({ art: 'laeuft', text: 'Abrechnung wird ausgelesen …' });
     try {
       const text = await textAusDatei(datei, (t) => setEinlesen({ art: 'laeuft', text: t }));
-      const a = abrechnungAuslesen(text);
-      let beste: { e: Submission; punkte: number } | undefined;
-      for (const e of state.submissions) {
-        const rs = e.items.map((p) => rechnungen.get(p.invoiceId)).filter((r): r is Invoice => !!r);
-        const z = abrechnungZuordnen(a, rs, e.items).zuordnungen;
-        if (!z.length) continue;
-        // Sichere Treffer (Datum + Betrag) zählen mehr; offene Einreichungen und passende Stelle bevorzugen
-        const offene = e.items.some((p) => !abgerechnet(p));
-        const punkte = z.reduce((s, x) => s + (x.unsicher ? 3 : 10), 0) + (offene ? 5 : 0) + (a.payer && a.payer === e.payer ? 3 : 0);
-        if (!beste || punkte > beste.punkte) beste = { e, punkte };
-      }
+      const beste = einreichungenFuerAbrechnung(abrechnungAuslesen(text), state)[0];
       if (!beste) {
         setEinlesen({ art: 'leer', text: 'Keine Einreichung enthält Rechnungen aus dieser Abrechnung (Rechnungsdatum und Betrag müssen passen).' });
         return;
@@ -66,7 +57,8 @@ export default function Submissions() {
     if (!z) return;
     if (z.neu) setAnsicht({ typ: 'bearbeiten', personId: z.personId, kt: z.kt });
     const e = state.submissions.find((x) => x.id === z.einreichungId);
-    if (e) setAnsicht({ typ: 'bearbeiten', e });
+    // Automatisch übernommene Bescheide direkt zum Prüfen öffnen
+    if (e) setAnsicht(e.toReview ? { typ: 'bescheid', e } : { typ: 'bearbeiten', e });
     nav.zielErledigt();
   }, [nav, state.submissions]);
 
@@ -463,7 +455,19 @@ function traegerName(p: Person, kt: Payer): string {
   return n ? ` (${n})` : '';
 }
 
-function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: Submission; beleg?: File; text?: string; onClose: () => void }) {
+export function BescheidFormular({
+  einreichung,
+  beleg,
+  text,
+  onClose,
+  onGespeichert,
+}: {
+  einreichung: Submission;
+  beleg?: File;
+  text?: string;
+  onClose: () => void;
+  onGespeichert?: () => void;
+}) {
   const { state, personById, speichereEinreichung, dateiOeffnen } = useStore();
   const dateienSpeichern = useDateienSpeichern();
   const personen = einreichung.personIds.map(personById);
@@ -555,7 +559,8 @@ function BescheidFormular({ einreichung, beleg, text, onClose }: { einreichung: 
             // Abgerechnete Positionen behalten ihr eigenes Bescheiddatum; neu erfasste bekommen das des Formulars
             return p.pending ? { ...p, decisionDate: undefined, fileId: undefined } : { ...p, decisionDate: p.decisionDate ?? datum, fileId };
           });
-          speichereEinreichung({ ...e, items, status: 'decided', decisionDate: datum, fileIds: ids });
+          speichereEinreichung({ ...e, items, status: 'decided', decisionDate: datum, fileIds: ids, toReview: undefined });
+          onGespeichert?.();
           onClose();
         }}
       >

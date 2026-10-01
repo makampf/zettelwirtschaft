@@ -3,7 +3,7 @@ import { startState } from './defaults';
 import { dateiHash } from './files';
 import { neueId } from './format';
 import { migriere } from './migration';
-import { speicherErmitteln, type Speicher } from './storage';
+import { speicherErmitteln, type EingangApi, type Speicher } from './storage';
 import { browserDatenLoeschen } from './storage-browser';
 import type { AppState, FileMeta, Submission, Person, Invoice } from './types';
 
@@ -24,6 +24,8 @@ interface Store {
   dateiOeffnen: (id: string) => Promise<void>;
   dateiLaden: (id: string) => Promise<Blob | undefined>;
   allesErsetzen: (state: AppState, dateien: Map<string, Blob>) => Promise<void>;
+  /** Eingang für Dokumente von außen (z. B. Paperless-ngx) – nur auf dem Server mit IMPORT_TOKEN. */
+  eingang?: EingangApi;
 }
 
 const Ctx = createContext<Store | null>(null);
@@ -179,6 +181,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         else window.open(url, '_blank');
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
       },
+      eingang: sp.eingang,
       allesErsetzen: async (neu, dateien) => {
         aenderungen.current++;
         await sp.ersetzeAlles(neu, dateien);

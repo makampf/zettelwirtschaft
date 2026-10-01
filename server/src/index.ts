@@ -15,6 +15,11 @@ if (!env.APP_PASSWORD) {
   console.warn('Warnung: APP_PASSWORD ist nicht gesetzt – die App ist ohne Anmeldung erreichbar.');
 }
 
+if (env.IMPORT_TOKEN && env.IMPORT_TOKEN.length < 16) {
+  console.error('IMPORT_TOKEN ist zu kurz (mindestens 16 Zeichen, z. B. openssl rand -hex 24).');
+  process.exit(1);
+}
+
 const hier = dirname(fileURLToPath(import.meta.url));
 const indexPfad = env.STATIC_INDEX ?? resolve(hier, '../../dist/index.html');
 const version: string = JSON.parse(readFileSync(resolve(hier, '../../package.json'), 'utf8')).version;
@@ -39,6 +44,7 @@ async function start() {
     benutzer: env.APP_USER ?? '',
     passwort: env.APP_PASSWORD,
     maxUploadBytes: Number(env.MAX_UPLOAD_MB ?? 25) * 1024 * 1024,
+    importToken: env.IMPORT_TOKEN || undefined,
     ocrVerzeichnis: resolve(dirname(indexPfad), 'ocr'),
     version,
   });

@@ -1,3 +1,4 @@
+import type { EingangsEintrag } from './eingang';
 import type { Speicher } from './storage';
 import type { AppState, FileMeta } from './types';
 
@@ -24,7 +25,7 @@ function standVon(s: { version: number } & Record<Sammlung, { id: string }[]>): 
   return { version: s.version, daten };
 }
 
-export function serverSpeicher(): Speicher {
+export function serverSpeicher(mitEingang = false): Speicher {
   // Zuletzt erfolgreich gespeicherter Stand – Grundlage für das Übertragen nur geänderter Datensätze
   let stand: Stand | null = null;
   let kette: Promise<void> = Promise.resolve();
@@ -86,5 +87,30 @@ export function serverSpeicher(): Speicher {
       await api('PUT', 'api/state', JSON.stringify(rest), { 'Content-Type': 'application/json' });
       stand = standVon(state);
     },
+    eingang: mitEingang
+      ? {
+          liste: async () => (await api<{ entries: EingangsEintrag[] }>('GET', 'api/inbox')).entries,
+          async uebernehmen(id) {
+            const res = await fetch(`api/inbox/${encodeURIComponent(id)}/claim`, { method: 'POST', headers: KOPF, credentials: 'same-origin' });
+            if (res.status === 409) return false;
+            if (!res.ok) throw new Error(`Server antwortet mit ${res.status}`);
+            return true;
+          },
+          async status(id, status, note) {
+            await api('PATCH', `api/inbox/${encodeURIComponent(id)}`, JSON.stringify({ status, note }), { 'Content-Type': 'application/json' });
+          },
+          async datei(id) {
+            const res = await fetch(`api/inbox/${encodeURIComponent(id)}/file`, { credentials: 'same-origin' });
+            if (!res.ok) return undefined;
+            const name = decodeURIComponent(/filename\*=UTF-8''([^;]+)/.exec(res.headers.get('content-disposition') ?? '')?.[1] ?? 'dokument');
+            const blob = await res.blob();
+            return new File([blob], name, { type: blob.type });
+          },
+          dateiUrl: (id) => `api/inbox/${encodeURIComponent(id)}/file`,
+          async loeschen(id) {
+            await api('DELETE', `api/inbox/${encodeURIComponent(id)}`);
+          },
+        }
+      : undefined,
   };
 }

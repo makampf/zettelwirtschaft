@@ -3,9 +3,10 @@ import { beihilfeFristEnde, breRelevant, erwartet, moeglicheDuplikate, quote, re
 import { ProviderField } from '../components/ProviderField';
 import { BetragFeld, DateiFeld, Feld, Leer, Modal, PersonChip, StatusBadge, useDateienSpeichern } from '../components/ui';
 import { erbringerListe, type ErbringerInfo } from '../providers';
+import { leereRechnung } from '../defaults';
 import { rechnungAuslesen, type Recognition } from '../recognition/parser';
 import { istLesbar, textAusDatei } from '../recognition/text';
-import { datum, euro, heute, neueId } from '../format';
+import { datum, euro, heute } from '../format';
 import { useNav } from '../nav';
 import { useStore } from '../store';
 import { ART_NAME, ktKurz, ktName, WEG_NAME, type Payer, type Person, type ServiceKind, type Invoice } from '../types';
@@ -162,7 +163,7 @@ export default function Invoices() {
                   <td>{datum(r.date)}</td>
                   <td><PersonChip person={person} /></td>
                   <td>
-                    <div>{r.provider || '–'}{r.fileIds.length > 0 && ' 📎'}{r.preventive && <span className="badge tag">Vorsorge</span>}</div>
+                    <div>{r.provider || '–'}{r.fileIds.length > 0 && ' 📎'}{r.preventive && <span className="badge tag">Vorsorge</span>}{r.toReview && <span className="badge tag pruefen" title="Automatisch aus dem Eingang erfasst – im Formular prüfen und speichern">prüfen</span>}</div>
                     {(r.description || r.invoiceNumber || r.billingOffice) && <small className="grau">{[r.billingOffice && `über ${r.billingOffice}`, r.invoiceNumber && `Nr. ${r.invoiceNumber}`, r.description].filter(Boolean).join(' · ')}</small>}
                   </td>
                   <td>{ART_NAME[r.kind]}</td>
@@ -197,24 +198,6 @@ export default function Invoices() {
       )}
     </section>
   );
-}
-
-function leereRechnung(personId: string, art: ServiceKind = 'illness'): Invoice {
-  return {
-    id: neueId(),
-    personId,
-    kind: art,
-    date: heute(),
-    provider: '',
-    invoiceNumber: '',
-    description: '',
-    amount: 0,
-    preventive: false,
-    heldBack: [],
-    expectedOverride: {},
-    fileIds: [],
-    note: '',
-  };
 }
 
 /** Aktionsleiste für mehrere ausgewählte Rechnungen. */
@@ -292,6 +275,7 @@ export function RechnungFormular({
   belege,
   onClose,
   onNeu,
+  onGespeichert,
 }: {
   rechnung?: Invoice;
   personId?: string;
@@ -299,6 +283,8 @@ export function RechnungFormular({
   belege?: File[];
   onClose: () => void;
   onNeu?: (personId: string) => void;
+  /** Nach dem Speichern (z. B. um ein Dokument aus dem Eingang zu entfernen). */
+  onGespeichert?: (r: Invoice) => void;
 }) {
   const { state, personById, speichereRechnung, loescheRechnung, dateiLaden } = useStore();
   const nav = useNav();
@@ -463,7 +449,10 @@ export function RechnungFormular({
     setSpeichert(true);
     try {
       const ids = await dateienSpeichern(rechnung?.fileIds ?? [], dateiIds, neueDateien);
-      speichereRechnung({ ...r, amount: betrag, fileIds: ids });
+      // Mit dem Speichern im Formular gilt eine automatisch erfasste Rechnung als geprüft
+      const gespeichert = { ...r, amount: betrag, fileIds: ids, toReview: undefined };
+      speichereRechnung(gespeichert);
+      onGespeichert?.(gespeichert);
       if (undNeu && onNeu) onNeu(r.personId);
       else onClose();
     } finally {

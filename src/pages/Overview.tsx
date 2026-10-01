@@ -1,4 +1,5 @@
 import { breCheck, hinweise, rechnungUebersicht, traegerFuer, versicherungFuer, type BreCheck } from '../calc';
+import { EingangPanel } from '../components/Eingang';
 import { Leer, PersonChip } from '../components/ui';
 import { euro } from '../format';
 import { useNav } from '../nav';
@@ -20,6 +21,8 @@ export default function Overview() {
           <button className="primaer" onClick={() => nav.gehe('rechnungen', { neu: true })}>+ Rechnung erfassen</button>
         </div>
       </div>
+
+      <EingangPanel />
 
       {liste.length > 0 && (
         <div className="hinweise">
