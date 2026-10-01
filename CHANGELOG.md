@@ -2,6 +2,13 @@
 
 Alle Änderungen an der Zettelwirtschaft. Wird bei jedem Release automatisch aus den Commit-Nachrichten erzeugt.
 
+# [1.5.0](https://github.com/makampf/zettelwirtschaft/compare/v1.4.2...v1.5.0) (2026-10-01)
+
+
+### Features
+
+* import documents from Paperless-ngx via webhook ([abae17a](https://github.com/makampf/zettelwirtschaft/commit/abae17a05f923bbe408fd74a236a45d45cc18e30))
+
 ## [1.4.2](https://github.com/makampf/zettelwirtschaft/compare/v1.4.1...v1.4.2) (2026-09-30)
 
 
