@@ -264,15 +264,47 @@ function nurVerrechnungsstelle(name: string, stelle: string | undefined): boolea
   return VERRECHNUNG.test(name) || (kenn.length > 0 && kenn.every((w) => eigen.has(w)));
 }
 
-function findeErbringer(zeilen: string[], text: string, bekannteAlle: string[], stelle?: string): string | undefined {
+/**
+ * Zeilen mit der Anschrift von Empfänger oder Patient (Anrede bzw. Name einer Person bis zur Postleitzahl). Ihr Ort
+ * darf keinen bekannten Erbringer auslösen – „Klinikum Musterstadt“ passt sonst auf jeden Beleg an jemanden aus
+ * Musterstadt.
+ */
+function anschriftZeilen(zeilen: string[], personen: ParserKontext['personen']): Set<number> {
+  const namen = personNamen(personen);
+  const nennt = (z: string) => {
+    const w = new Set(normalisiere(z).split(' '));
+    return namen.some((n) => n.woerter.every((x) => w.has(x)));
+  };
+  const plz = /(^|\s)\d{5}\s+\S/;
+  const ergebnis = new Set<number>();
+  zeilen.forEach((z, i) => {
+    if (!(EMPFAENGER.test(z) || nennt(z))) return;
+    ergebnis.add(i);
+    if (plz.test(z)) return;
+    // Folgezeilen bis zur Postleitzahl (Straße, Ort)
+    for (let j = i + 1; j <= i + 4 && j < zeilen.length; j++) {
+      if (!plz.test(zeilen[j])) continue;
+      for (let k = i + 1; k <= j; k++) ergebnis.add(k);
+      break;
+    }
+  });
+  return ergebnis;
+}
+
+const EMPFAENGER = /^(herrn?|frau|familie|eheleute)\b|c\/o|z\.\s?hd/i;
+
+function findeErbringer(zeilen: string[], bekannteAlle: string[], personen: ParserKontext['personen'], stelle?: string): string | undefined {
   // Bekannte Namen, die nur die Verrechnungsstelle bezeichnen, zählen nicht als Leistungserbringer
   const bekannte = bekannteAlle.filter((b) => !nurVerrechnungsstelle(b, stelle));
+  const anschrift = anschriftZeilen(zeilen, personen);
+  const ohneAnschrift = zeilen.filter((_, i) => !anschrift.has(i));
+  const text = ohneAnschrift.join('\n');
   // 1. Bereits bekannte Leistungserbringer wiedererkennen (längster Treffer)
   const klein = text.toLowerCase().replace(/\s+/g, ' ');
   const bekannt = bekannte.filter((b) => b.length >= 4 && klein.includes(b.toLowerCase().replace(/\s+/g, ' '))).sort((a, b) => b.length - a.length);
   if (bekannt.length) return bekannt[0];
   // 1b. Unscharf: kennzeichnende Wörter (z. B. Nachname) im Briefkopf
-  const aehnlich = bekannterErbringerImText(zeilen.slice(0, 25).join('\n'), bekannte);
+  const aehnlich = bekannterErbringerImText(zeilen.slice(0, 25).filter((_, i) => !anschrift.has(i)).join('\n'), bekannte);
   if (aehnlich) return aehnlich;
   // 1c. Beleg einer Verrechnungsstelle: behandelnden Arzt suchen
   if (stelle) {
@@ -302,15 +334,19 @@ function findeErbringer(zeilen: string[], text: string, bekannteAlle: string[], 
 const PFLEGE = /pflegegrad|pflegeleistung|pflegesachleistung|pflegedienst|pflegeheim|pflegeeinrichtung|stationäre\s+pflege|kurzzeitpflege|verhinderungspflege|tagespflege|entlastungsbetrag|sgb\s*xi|investitionskosten|unterkunft\s+und\s+verpflegung|heimentgelt|pflegesatz/i;
 const VORSORGE = /vorsorgeuntersuchung|vorsorge\b|früherkennung|check-?\s?up|gesundheitsuntersuchung|krebsvorsorge/i;
 
-function findePerson(zeilen: string[], personen: ParserKontext['personen']): string | undefined {
-  // Namen als Wortmengen: passt auch bei „Mustermann, Erika“, anderer Reihenfolge oder fehlenden Umlauten (OCR)
-  const varianten = personen.flatMap((p) =>
+/** Namen der Personen als Wortmengen: passt auch bei „Mustermann, Erika“, anderer Reihenfolge oder fehlenden Umlauten (OCR). */
+function personNamen(personen: ParserKontext['personen']): { id: string; woerter: string[] }[] {
+  return personen.flatMap((p) =>
     (p.invoiceNames ?? '')
       .split(',')
       .map((n) => normalisiere(n).split(' ').filter((w) => w.length >= 2))
       .filter((w) => w.join('').length >= 3)
       .map((woerter) => ({ id: p.id, woerter })),
   );
+}
+
+function findePerson(zeilen: string[], personen: ParserKontext['personen']): string | undefined {
+  const varianten = personNamen(personen);
   if (!varianten.length) return undefined;
   const woerterJeZeile = zeilen.map((z) => new Set(normalisiere(z).split(' ')));
   const treffer = (idx: number[]) =>
@@ -352,7 +388,7 @@ export function rechnungAuslesen(roh: string, k: ParserKontext): Recognition {
   e.invoiceNumber = findeRechnungsnummer(zeilen);
   const stelle = findeVerrechnungsstelle(zeilen);
   e.billingOffice = stelle && (bekannterErbringerImText(stelle, k.bekannteVerrechnungsstellen ?? []) ?? stelle);
-  e.provider = findeErbringer(zeilen, text, k.bekannteErbringer, stelle);
+  e.provider = findeErbringer(zeilen, k.bekannteErbringer, k.personen, stelle);
   e.kind = PFLEGE.test(text) ? 'care' : 'illness';
   if (e.kind === 'illness' && VORSORGE.test(text)) e.preventive = true;
   e.personId = findePerson(zeilen, k.personen);

@@ -94,4 +94,24 @@ describe('Leistungserbringer', () => {
     });
     expect(e.provider).toBe('hausarzt dr. weiß');
   });
+
+  it('ein Ort in der Anschrift des Patienten löst keinen bekannten Erbringer aus', () => {
+    const kontext = {
+      heute: '2026-09-29',
+      personen: [{ id: 'oma', invoiceNames: 'Erika Mustermann' }],
+      bekannteErbringer: ['Klinikum Musterstadt', 'Praxis Dr. Beispiel'],
+    };
+    const anPatientin = (absender: string) =>
+      rechnungAuslesen(`${absender}\nFrau\nErika Mustermann\nMusterweg 1\n90000 Musterstadt\nRechnung vom 01.09.2026\nRechnungsbetrag 50,00 €`, kontext);
+    expect(anPatientin('Sanitätshaus Lindenblatt GmbH · Hauptstraße 2 · 90001 Beispielhausen').provider).toBe('Sanitätshaus Lindenblatt GmbH');
+    expect(anPatientin('Dr. med. Beispiel · Hauptstraße 2 · 90001 Beispielhausen').provider).toBe('Praxis Dr. Beispiel');
+    // Patientenzeile mit Anschrift
+    const patientenzeile = rechnungAuslesen(
+      'Physiotherapie Lindenblatt\nPatientin: Erika Mustermann, Musterweg 1, 90000 Musterstadt\nRechnungsbetrag 50,00 €',
+      kontext,
+    );
+    expect(patientenzeile.provider).toBe('Physiotherapie Lindenblatt');
+    // Rechnung des Klinikums selbst wird weiter erkannt
+    expect(anPatientin('Klinikum Musterstadt · Klinikweg 5 · 90000 Musterstadt').provider).toBe('Klinikum Musterstadt');
+  });
 });
