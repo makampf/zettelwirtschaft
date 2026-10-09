@@ -2,6 +2,13 @@
 
 Alle Änderungen an der Zettelwirtschaft. Wird bei jedem Release automatisch aus den Commit-Nachrichten erzeugt.
 
+## [1.5.1](https://github.com/makampf/zettelwirtschaft/compare/v1.5.0...v1.5.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* ignore recipient and patient addresses when recognizing known providers ([b0f88ba](https://github.com/makampf/zettelwirtschaft/commit/b0f88ba9ccdade334781a95bde38742810f142ed))
+
 # [1.5.0](https://github.com/makampf/zettelwirtschaft/compare/v1.4.2...v1.5.0) (2026-10-01)
 
 
